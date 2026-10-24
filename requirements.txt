@@ -1,0 +1,2 @@
+# 只用 vgamepad 一个第三方库（它自带 ViGEm 客户端 DLL）
+vgamepad>=0.1.0
