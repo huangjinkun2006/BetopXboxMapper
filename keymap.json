@@ -17,12 +17,68 @@
     "GUIDE": 16
   },
   "axes": {
-    "LX": {"up": 1, "usage": 48, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 5, "invert": false},
-    "LY": {"up": 1, "usage": 49, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 6, "invert": true},
-    "RX": {"up": 1, "usage": 50, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 7, "invert": false},
-    "RY": {"up": 1, "usage": 53, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 8, "invert": true},
-    "LT": {"up": 2, "usage": 197, "lo": 0, "hi": 255, "unipolar": true, "fallback_byte": 9, "invert": false},
-    "RT": {"up": 2, "usage": 196, "lo": 0, "hi": 255, "unipolar": true, "fallback_byte": 10, "invert": false}
+    "LX": {
+      "up": 1,
+      "usage": 48,
+      "lo": 0,
+      "hi": 255,
+      "center": 128,
+      "fallback_byte": 5,
+      "invert": false
+    },
+    "LY": {
+      "up": 1,
+      "usage": 49,
+      "lo": 0,
+      "hi": 255,
+      "center": 128,
+      "fallback_byte": 6,
+      "invert": true
+    },
+    "RX": {
+      "up": 1,
+      "usage": 50,
+      "lo": 0,
+      "hi": 255,
+      "center": 128,
+      "fallback_byte": 7,
+      "invert": false
+    },
+    "RY": {
+      "up": 1,
+      "usage": 53,
+      "lo": 0,
+      "hi": 255,
+      "center": 128,
+      "fallback_byte": 8,
+      "invert": true
+    },
+    "LT": {
+      "up": 2,
+      "usage": 197,
+      "lo": 0,
+      "hi": 255,
+      "unipolar": true,
+      "fallback_byte": 9,
+      "invert": false
+    },
+    "RT": {
+      "up": 2,
+      "usage": 196,
+      "lo": 0,
+      "hi": 255,
+      "unipolar": true,
+      "fallback_byte": 10,
+      "invert": false
+    }
   },
-  "hat": {"up": 1, "usage": 57, "fallback_byte": 2}
+  "hat": {
+    "up": 1,
+    "usage": 57,
+    "fallback_byte": 2
+  },
+  "rumble": true,
+  "rumble_fmt": 28,
+  "rumble_gain": 3.0,
+  "rumble_custom": null
 }

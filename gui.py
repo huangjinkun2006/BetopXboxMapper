@@ -4,7 +4,15 @@
 import os
 import sys
 
-# 依赖在 main() 里统一自检（_ensure_deps），打包成 exe 后会自动跳过
+# ---- 依赖自举：当前解释器缺 vgamepad 就自动切到装好的那个 Python ----
+# 打包成 exe 后依赖已经打进去了，不能再切回 venv
+VENV_PY = r"C:\Users\黄锦坤\.workbuddy\binaries\python\envs\py312\Scripts\python.exe"
+if not getattr(sys, "frozen", False):
+    try:
+        import vgamepad  # noqa: F401
+    except ImportError:
+        if os.path.exists(VENV_PY) and os.path.abspath(sys.executable).lower() != VENV_PY.lower():
+            os.execv(VENV_PY, [VENV_PY, os.path.abspath(__file__)] + sys.argv[1:])
 
 import threading
 import time
@@ -17,6 +25,8 @@ except Exception:
     pass
 
 import betop
+import guide
+import lab
 
 HERE = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
         else os.path.dirname(os.path.abspath(__file__)))
@@ -54,6 +64,14 @@ class App:
         self.pad_items = {}      # 名字 -> [canvas item ids]
         self.pad_text = {}       # 名字 -> text item id
         self._build()
+        # 第一次打开自动弹一次教程，之后不再打扰
+        if not self.km.get("guide_seen"):
+            self.km["guide_seen"] = True
+            try:
+                betop.save_keymap(self.km)
+            except Exception:
+                pass
+            root.after(700, self.open_guide)
 
     # ------------------------------------------------------------ 界面
     def _build(self):
@@ -89,13 +107,15 @@ class App:
             return f
 
         nav_header("我的手柄")
+        nav_item("📖 新手教程", self.open_guide)
         nav_item("🖥 设备检测", self.show_device)
         nav_header("工具箱")
         nav_item("🕹 键位映射", None, active=True)
         nav_item("🔑 键位识别向导", self.open_wizard)
+        nav_item("🧪 震动实验室", self.open_lab)
         nav_item("📖 使用说明", self.show_help)
         nav_item("💾 保存键位", self.save)
-        tk.Label(sb, text="BTP-V1T 先游定制版\nv1.2", font=(FONT, 8), fg="#c2c6cd",
+        tk.Label(sb, text="BTP-V1T 先游定制版\nv1.4", font=(FONT, 8), fg="#c2c6cd",
                  bg=C_CARD, justify="center").pack(side="bottom", pady=14)
 
         # ================= 主区 =================
@@ -185,6 +205,21 @@ class App:
         om["menu"].config(font=(FONT, 8))
         om.pack(side="left", padx=4)
         self.rumble_fmt.trace_add("write", lambda *_: self.on_rumble_cfg())
+        # 震动强度滑块（转发和娱乐模式都吃这个系数）
+        gr = tk.Frame(rc, bg=C_CARD)
+        gr.pack(fill="x", padx=14, pady=(2, 0))
+        tk.Label(gr, text="强度", font=(FONT, 8), fg=C_SUB,
+                 bg=C_CARD).pack(side="left")
+        tk.Label(gr, text="(>100%放大)", font=(FONT, 7), fg="#a0a4ad",
+                 bg=C_CARD).pack(side="left")
+        self.rumble_gain = tk.DoubleVar(
+            value=float(self.km.get("rumble_gain", 1.0)))
+        ttk.Scale(gr, from_=0.05, to=3.0, variable=self.rumble_gain,
+                  length=118, command=lambda _v: self.on_gain()).pack(
+            side="left", padx=4)
+        self.gain_lbl = tk.Label(gr, text=f"{int(self.rumble_gain.get() * 100)}%",
+                                 font=("Consolas", 8), fg=C_TEXT, bg=C_CARD, width=4)
+        self.gain_lbl.pack(side="left")
         tb = tk.Frame(rc, bg=C_CARD)
         tb.pack(fill="x", padx=14, pady=(6, 12))
         tk.Button(tb, text="试震一下", font=(FONT, 9), fg="white", bg=C_ACC,
@@ -200,6 +235,38 @@ class App:
         self.rumble_lbl = tk.Label(tb, text="", font=(FONT, 8), fg=C_SUB,
                                    bg=C_CARD, wraplength=150, justify="left")
         self.rumble_lbl.pack(side="left", padx=8)
+        # 诊断：游戏到底有没有把震动发过来
+        self.dbg_lbl = tk.Label(rc, text="还没收到游戏的震动指令",
+                                font=("Consolas", 8), fg="#a0a4ad",
+                                bg=C_CARD, justify="left")
+        self.dbg_lbl.pack(anchor="w", padx=14, pady=(0, 4))
+        # 娱乐模式：手柄无限震动，再点一次停
+        self.fun_stop = threading.Event()
+        self._fun_thread = None
+        self._fun_rm = None
+        self._fun_own = False
+        tb2 = tk.Frame(rc, bg=C_CARD)
+        tb2.pack(fill="x", padx=14, pady=(6, 12))
+        self.btn_fun = tk.Button(tb2, text="娱乐模式 · 无限震动",
+                                 font=(FONT, 9, "bold"), fg="white", bg="#8e44ad",
+                                 activebackground="#6c3483",
+                                 activeforeground="white", relief="flat",
+                                 padx=12, pady=4, cursor="hand2",
+                                 command=self.toggle_fun)
+        self.btn_fun.pack(side="left")
+        tk.Label(tb2, text="再点一次按钮停止", font=(FONT, 8), fg=C_SUB,
+                 bg=C_CARD).pack(side="left", padx=6)
+        cl = tk.Frame(rc, bg=C_CARD)
+        cl.pack(fill="x", padx=14, pady=(0, 10))
+        self.custom_lbl = tk.Label(cl, text=self._custom_text(),
+                                   font=(FONT, 8), fg=C_SUB, bg=C_CARD,
+                                   justify="left", wraplength=210)
+        self.custom_lbl.pack(side="left")
+        self.btn_clr_custom = tk.Button(
+            cl, text="🗑", font=(FONT, 8), relief="flat", bg="#fdecea",
+            fg="#c0392b", padx=5, pady=0, cursor="hand2",
+            command=lambda: self.clear_custom(True))
+        self.btn_clr_custom.pack(side="right")
 
         # ---------- 底部：摇杆 / 扳机 ----------
         bc = tk.Frame(main, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
@@ -244,6 +311,7 @@ class App:
         if self.running:
             self.stop.set()
             self.running = False
+            self.fun_stop.set()          # 娱乐模式一起停
             self._close_rumble()
             self.btn_run.config(text="启动映射", bg=C_RED)
             self.status.set("已停止")
@@ -258,11 +326,14 @@ class App:
         # 震动通道单独开（游戏接口没有输出报告），开不了也只是没震，不影响映射
         try:
             self.rumble = betop.Rumble(fmt=self._fmt_index(),
-                                       enabled=bool(self.rumble_on.get())).open()
+                                       enabled=bool(self.rumble_on.get()),
+                                       custom=self.km.get("rumble_custom")).open()
             self.rumble_lbl.config(text="震动通道已开")
         except Exception as e:
             self.rumble = None
             self.rumble_lbl.config(text=f"震动通道开不了：{e}")
+            self.dbg_lbl.config(text="震动通道开不了，游戏震动转不出去",
+                                fg="#c0392b")
         self.stop.clear()
         self.running = True
         self.btn_run.config(text="停止映射", bg="#5a5e66")
@@ -287,10 +358,80 @@ class App:
             self.rumble.enabled = self.km["rumble"]
             self.rumble.fmt = self.km["rumble_fmt"]
 
+    def on_gain(self):
+        g = max(0.05, min(3.0, self.rumble_gain.get()))
+        self.km["rumble_gain"] = round(g, 2)
+        self.gain_lbl.config(text=f"{int(g * 100)}%")
+
+    def _gain(self):
+        return max(0.05, min(3.0, float(self.km.get("rumble_gain", 1.0))))
+
     def on_rumble(self, big, small):
-        """ViGEm 告诉我们游戏想让手柄震多大 -> 转发给物理手柄"""
+        """ViGEm 告诉我们游戏想让手柄震多大 -> 乘上强度滑块 -> 转发"""
         if self.rumble is not None:
-            self.rumble.set(big, small)
+            g = self._gain()
+            self.rumble.set(min(255, int(big * g)), min(255, int(small * g)))
+        self._dbg = (int(big), int(small), self.rumble is not None)
+        now = time.time()
+        if now - getattr(self, "_dbg_t", 0) > 0.12:   # 别把 UI 队列刷爆
+            self._dbg_t = now
+            self.root.after(0, self._flush_dbg)
+
+    def _flush_dbg(self):
+        b, s, ok = getattr(self, "_dbg", (0, 0, False))
+        tail = "" if ok else "  （震动通道没开，转不出去）"
+        self.dbg_lbl.config(text=f"游戏震动 → 大马达 {b:3d} · 小马达 {s:3d}{tail}",
+                            fg=("#0f9d58" if ok else "#c0392b"))
+
+    def _custom_text(self):
+        """现在到底在用哪条震动命令"""
+        c = self.km.get("rumble_custom")
+        if not c:
+            return "当前用「命令格式」下拉里选的那条"
+        fixed = " ".join(f"b[{o}]=0x{v:02X}" for o, v in c.get("fixed", []))
+        motor = "、".join(f"b[{o}]" for o in c.get("motor", []))
+        return f"已用实验室冠军命令：{fixed}；马达字节 {motor}"
+
+    def open_guide(self):
+        """图形化新手教程：六步走一遍"""
+        try:
+            guide.Guide(self)
+        except Exception as e:
+            messagebox.showerror("教程打不开", str(e), parent=self.root)
+
+    def open_lab(self):
+        """震动实验室：扫命令 + 两两对决选出最猛的那条"""
+        try:
+            lab.Lab(self.root, self.km, on_apply=self.apply_custom,
+                    on_clear=lambda: self.clear_custom(False))
+        except Exception as e:
+            self.rumble_lbl.config(text=f"实验室开不了：{e}")
+
+    def clear_custom(self, confirm=True):
+        """丢掉实验室选出来的冠军命令，回到「命令格式」下拉里选的那条"""
+        if confirm and not self.km.get("rumble_custom"):
+            messagebox.showinfo("清除", "现在没有冠军命令，用的就是下拉里那条",
+                                parent=self.root)
+            return
+        if confirm and not messagebox.askyesno(
+                "清除冠军命令",
+                "丢掉实验室选出来的冠军命令，改用「命令格式」下拉里选的那条？",
+                parent=self.root):
+            return
+        self.km["rumble_custom"] = None
+        if self.rumble is not None:
+            self.rumble.custom = None
+            self.rumble._last = None
+        self.custom_lbl.config(text=self._custom_text())
+        self.rumble_lbl.config(text="已回到下拉里的命令格式")
+
+    def apply_custom(self, spec, title):
+        self.km["rumble_custom"] = spec
+        if self.rumble is not None:
+            self.rumble.custom = spec
+            self.rumble._last = None
+        self.custom_lbl.config(text=self._custom_text())
+        self.rumble_lbl.config(text=f"已换成冠军 {title}")
 
     def _close_rumble(self):
         if self.rumble is not None:
@@ -304,11 +445,12 @@ class App:
 
     def stop_rumble(self):
         """急停：不管当前在震什么都立刻清零"""
+        self.fun_stop.set()          # 娱乐模式也一起停
         rm = self.rumble
         own = False
         if rm is None or rm.dev is None:
             try:
-                rm = betop.Rumble().open()
+                rm = betop.Rumble(custom=self.km.get("rumble_custom")).open()
                 own = True
             except Exception as e:
                 self.rumble_lbl.config(text=f"打不开：{e}")
@@ -325,7 +467,8 @@ class App:
     def test_rumble(self):
         """不启动映射也能量：单独开私有通道震三下"""
         try:
-            r = betop.Rumble(fmt=self._fmt_index()).open()
+            r = betop.Rumble(fmt=self._fmt_index(),
+                          custom=self.km.get("rumble_custom")).open()
         except Exception as e:
             self.rumble_lbl.config(text=f"打不开：{e}")
             return
@@ -333,12 +476,68 @@ class App:
 
         def go():
             try:
-                for v in (255, 0, 200, 0, 255, 0):
-                    r.set(v, v)
-                    time.sleep(0.35)
+                g = self._gain()
+                # 先单独大马达、再单独小马达、最后两个一起，好分辨哪个在响
+                seq = [(255, 0), (0, 0), (0, 255), (0, 0), (255, 255), (0, 0)]
+                for a, b in seq:
+                    r.set(min(255, int(a * g)), min(255, int(b * g)))
+                    time.sleep(0.7)
             finally:
                 r.close()
         threading.Thread(target=go, daemon=True).start()
+
+    def toggle_fun(self):
+        """娱乐模式：手柄无限震动，再点一次（或点停止震动）停"""
+        if self._fun_thread is not None and self._fun_thread.is_alive():
+            self.fun_stop.set()
+            return
+        rm, own = self.rumble, False
+        if rm is None or rm.dev is None:
+            try:
+                rm = betop.Rumble(fmt=self._fmt_index(),
+                           custom=self.km.get("rumble_custom")).open()
+                own = True
+            except Exception as e:
+                self.rumble_lbl.config(text=f"打不开：{e}")
+                return
+        self._fun_rm, self._fun_own = rm, own
+        self.fun_stop.clear()
+        self.btn_fun.config(text="停止无限震动", bg=C_RED_DK)
+        self.rumble_lbl.config(text="娱乐模式震着呢…")
+        self._fun_thread = threading.Thread(target=self._fun_loop, daemon=True)
+        self._fun_thread.start()
+
+    def _fun_loop(self):
+        rm = self._fun_rm
+        own = self._fun_own
+        try:
+            strength = max(1, min(255, int(255 * self._gain())))
+            while not self.fun_stop.is_set():
+                try:
+                    # 固件收到命令不会自动停，但持续续发最稳；强度跟滑块走
+                    rm.play_once(rm.fmt, strength)
+                except Exception:
+                    pass
+                time.sleep(0.5)
+        finally:
+            try:
+                rm.stop()
+                rm.stop_all()
+            except Exception:
+                pass
+            if own:
+                try:
+                    rm.close()
+                except Exception:
+                    pass
+            self._fun_rm = None
+            self._fun_own = False
+            try:
+                self.root.after(0, lambda: self.btn_fun.config(
+                    text="娱乐模式 · 无限震动", bg="#8e44ad"))
+                self.rumble_lbl.config(text="已停止娱乐模式")
+            except Exception:
+                pass
 
     def auto_scan(self):
         """挨个发候选命令把手感试出来：感觉到震就点「这次震了」"""
@@ -347,7 +546,7 @@ class App:
         rm, own = self.rumble, False
         if rm is None or rm.dev is None:
             try:
-                rm = betop.Rumble().open()
+                rm = betop.Rumble(custom=self.km.get("rumble_custom")).open()
                 own = True
             except Exception as e:
                 messagebox.showerror("扫不了", f"{e}")
@@ -618,38 +817,17 @@ class App:
         messagebox.showinfo("向导", "已在新窗口打开识别向导，跟着提示按键即可")
 
 
-def _ensure_deps():
-    """缺 vgamepad 就弹窗告诉用户怎么装（打包成 exe 时依赖已内置，跳过）"""
-    if getattr(sys, "frozen", False):
-        return
-    err = ""
-    try:
-        import vgamepad  # noqa: F401
-        return
-    except ImportError as exc:
-        err = str(exc)
-    root = tk.Tk()
-    root.withdraw()
-    messagebox.showerror(
-        "缺少依赖 vgamepad",
-        "这个程序需要 vgamepad 库和 ViGEmBus 驱动。请在命令行执行：\n\n"
-        "    pip install vgamepad\n\n"
-        "然后到 https://github.com/nefarius/ViGEmBus/releases\n"
-        "下载安装 ViGEmBus 驱动（装一次就行，不用每次跑）。\n\n"
-        f"当前错误：{err}")
-    try:
-        root.destroy()
-    except Exception:
-        pass
-    sys.exit(1)
-
-
 def main():
-    _ensure_deps()
     root = tk.Tk()
     app = App(root)
     # 关窗前务必把马达停掉，否则手柄会一直震
     def _on_close():
+        try:
+            app.fun_stop.set()           # 娱乐模式先停
+            if app._fun_thread is not None and app._fun_thread.is_alive():
+                app._fun_thread.join(timeout=2.0)
+        except Exception:
+            pass
         try:
             if app.rumble is not None:
                 app.rumble.stop()

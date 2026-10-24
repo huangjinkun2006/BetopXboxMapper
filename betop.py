@@ -15,6 +15,7 @@
 import json
 import os
 import sys
+import threading
 import time
 
 try:
@@ -63,6 +64,8 @@ def default_keymap():
         "trigger_deadzone": 0.03,
         "rumble": True,          # 把游戏震动转发到物理手柄
         "rumble_fmt": 0,         # 震动命令格式（RUMBLE_FORMATS 下标）
+        "rumble_gain": 1.0,      # 震动强度系数 0.05..3.0（>1 是把小震动放大）
+        "rumble_custom": None,   # 实验室比出来的冠军命令，有它就优先用它
         "buttons": {
             "A": 1, "B": 2, "X": 4, "Y": 5,
             "LB": 7, "RB": 8,
@@ -294,11 +297,54 @@ RUMBLE_FORMATS = _build_formats()
 class Rumble:
     """把虚拟手柄收到的震动指令转发给物理手柄。"""
 
-    def __init__(self, fmt=0, enabled=True):
+    # 固件收到命令只会震很短一下（不像 XInput 会自己持续），
+    # 所以要不停重发，游戏里的持续震动才不会变成"抖一下"。
+    HB_INTERVAL = 0.20
+
+    def __init__(self, fmt=0, enabled=True, custom=None):
         self.dev = None
         self.fmt = fmt
         self.enabled = enabled
         self._last = None
+        self._target = (0, 0)
+        self._hb_stop = threading.Event()
+        self._hb = None
+        # custom = 实验室比出来的冠军命令，形如
+        #   {"chan": "write"/"set", "fixed": [(偏移, 值)...], "motor": [偏移...]}
+        # motor 里的字节会被马达强度覆盖；有它就不用猜格式了
+        self.custom = custom
+
+    # ------------------------------------------------------ 造帧
+    def frame(self, l, r):
+        c = self.custom
+        if not c:
+            return RUMBLE_FORMATS[self.fmt][2](l, r)
+        b = [2] + [0] * 63
+        for off, val in c.get("fixed", []):
+            b[off] = val
+        m = [o for o in c.get("motor", []) if o != 1] or [3]
+        b[m[0]] = max(l, r) if len(m) == 1 else l
+        if len(m) >= 2:
+            b[m[1]] = r
+        return b
+
+    # ------------------------------------------------------ 心跳续发
+    def _ensure_hb(self):
+        if self._hb is not None and self._hb.is_alive():
+            return
+        self._hb_stop.clear()
+        self._hb = threading.Thread(target=self._hb_loop, daemon=True)
+        self._hb.start()
+
+    def _hb_loop(self):
+        while not self._hb_stop.is_set():
+            time.sleep(self.HB_INTERVAL)
+            l, r = self._target
+            if (l or r) and self.dev is not None and self.enabled:
+                try:
+                    self._send(self.frame(l, r))
+                except Exception:
+                    pass
 
     def open(self):
         path = hidraw.find_output_iface(VID)
@@ -308,8 +354,11 @@ class Rumble:
         return self
 
     def _send(self, data):
-        """按当前格式指定的通道发一帧；不支持就退回另一种"""
-        ch = RUMBLE_FORMATS[self.fmt][1]
+        """按当前格式（或自定义冠军命令）指定的通道发一帧；不支持就退回另一种"""
+        if self.custom:
+            ch = CH_SET_REPORT if self.custom.get("chan") == "set" else CH_WRITE
+        else:
+            ch = RUMBLE_FORMATS[self.fmt][1]
         if ch == CH_SET_REPORT:
             if self.dev.set_report(data):
                 return True
@@ -324,36 +373,50 @@ class Rumble:
             return
         l = max(0, min(255, int(big)))
         r = max(0, min(255, int(small)))
+        self._target = (l, r)
         key = (l, r, self.fmt)
-        if key == self._last:      # 震动脉冲很密，值没变就别重复写
+        if key == self._last:      # 值没变就不用立刻重写，心跳会续着
+            if l or r:
+                self._ensure_hb()
             return
         self._last = key
         try:
-            self._send(RUMBLE_FORMATS[self.fmt][2](l, r))
+            self._send(self.frame(l, r))
         except Exception:
             pass
+        if l or r:
+            self._ensure_hb()      # 只要还在震就一直续发
 
     def play_once(self, idx, strength=255, secs=0.9):
         """试震 / 自动扫描用：按指定格式发一段固定强度的震动"""
         self.fmt = max(0, min(idx, len(RUMBLE_FORMATS) - 1))
         self._last = None
-        self._send(RUMBLE_FORMATS[self.fmt][2](strength, strength))
+        self._send(self.frame(strength, strength))
 
     def stop(self):
         """用当前格式回写 0，让马达停转"""
         self._last = None
+        self._target = (0, 0)
         if self.dev is None:
             return
         try:
-            self._send(RUMBLE_FORMATS[self.fmt][2](0, 0))
+            self._send(self.frame(0, 0))
         except Exception:
             pass
 
     def stop_all(self):
         """保险起见，把所有已知载荷都清一遍（有手柄收到某条命令后会一直震）"""
         self._last = None
+        self._target = (0, 0)
         if self.dev is None:
             return
+        if self.custom:               # 自定义冠军命令也要回写 0
+            try:
+                z = self.frame(0, 0)
+                self.dev.write(z)
+                self.dev.set_report(z)
+            except Exception:
+                pass
         for _n, _c, fn in RUMBLE_FORMATS:
             try:
                 zero = fn(0, 0)
@@ -374,6 +437,7 @@ class Rumble:
                         pass
 
     def close(self):
+        self._hb_stop.set()        # 心跳线程停掉，不然关了还在发
         try:
             self.stop()
             self.stop_all()
