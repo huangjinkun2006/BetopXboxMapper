@@ -27,6 +27,8 @@ except Exception:
 import betop
 import guide
 import lab
+import alarm
+import tray
 import updater
 
 HERE = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
@@ -35,6 +37,9 @@ HERE = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
 BTN_ORDER = ["Y", "X", "B", "A", "LB", "RB", "BACK", "START", "LS", "RS", "GUIDE"]
 BTN_CN = {"Y": "Y", "X": "X", "B": "B", "A": "A", "LB": "LB", "RB": "RB",
           "BACK": "BACK", "START": "START", "LS": "L3", "RS": "R3", "GUIDE": "LOGO"}
+
+# 托盘右键菜单 id
+T_SHOW, T_TOGGLE, T_ALARM, T_TEST, T_UPDATE, T_EXIT = 1, 2, 3, 4, 5, 6
 
 # 配色 / 手柄图统一放在 padui.py（识别向导 wizard.py 用的是同一套）
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
@@ -75,6 +80,168 @@ class App:
             root.after(700, self.open_guide)
         # 启动时后台静默查一次更新，结果只显示在左下角，不弹窗
         root.after(1200, self.auto_check_update)
+        # 托盘 + 震动闹钟（闹钟即使不开映射也能到点震）
+        self.tray = None
+        self._tray_hid = False
+        self.alarm = alarm.AlarmClock(self.km,
+                                      state_getter=lambda: self.state)
+        self.alarm.start()
+        root.after(600, self._init_tray)
+        root.protocol("WM_DELETE_WINDOW", self.on_close_request)
+
+    # ------------------------------------------------------------ 托盘
+    def _init_tray(self):
+        """起托盘图标；失败（比如远程桌面没外壳）也不影响主程序"""
+        try:
+            t = tray.TrayIcon(tip="北通手柄映射器")
+            if t.start(self._tray_items()):
+                self.tray = t
+                t.set_tip("北通手柄映射器 — 双击打开，右键看菜单")
+            else:
+                t.stop()
+        except Exception:
+            self.tray = None
+
+    def _tray_items(self):
+        """菜单项：(id, 文字, 打勾, 可用)"""
+        run = bool(self.running)
+        return [
+            (T_SHOW, "显示主界面"),
+            (T_TOGGLE, "停止映射") if run else (T_TOGGLE, "启动映射"),
+            None,
+            (T_ALARM, "⏰ 震动闹钟",
+             bool(self.km.get("alarm_on")), True),
+            (T_TEST, "试震一下", False, True),
+            (T_UPDATE, "🔄 检查更新"),
+            None,
+            (T_EXIT, "退出程序"),
+        ]
+
+    def _refresh_tray(self):
+        if self.tray:
+            try:
+                self.tray.set_items(self._tray_items())
+            except Exception:
+                pass
+
+    def _drain_tray(self):
+        """托盘动作在子线程产生的，这里（主线程）统一处理"""
+        if not self.tray:
+            return
+        for cmd in self.tray.poll():
+            try:
+                if cmd in ("show", T_SHOW):
+                    self.show_window()
+                elif cmd == T_TOGGLE:
+                    self.toggle()
+                elif cmd == T_ALARM:
+                    self.open_alarm()
+                elif cmd == T_TEST:
+                    self.test_rumble()
+                elif cmd == T_UPDATE:
+                    self.open_update()
+                elif cmd == T_EXIT:
+                    self.quit_app()
+            except Exception:
+                pass
+        self._refresh_tray()
+
+    def show_window(self):
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+        except Exception:
+            pass
+
+    def hide_to_tray(self):
+        """关窗口只藏起来，程序继续在托盘里跑"""
+        try:
+            self.root.withdraw()
+            self._tray_hid = True
+            if self.tray:
+                self.tray.notify("还在后台跑着，双击图标打开；"
+                                 "想彻底退出就右键 → 退出程序",
+                                 "北通手柄映射器")
+        except Exception:
+            pass
+
+    def on_close_request(self):
+        """点 X：有托盘就藏起来，没托盘就直接退"""
+        if self.tray:
+            self.hide_to_tray()
+        else:
+            self.quit_app()
+
+    def quit_app(self):
+        """真正退出：停映射、停震动、撤托盘"""
+        try:
+            self.fun_stop.set()          # 娱乐模式先停
+            th = getattr(self, "_fun_thread", None)
+            if th is not None and th.is_alive():
+                th.join(timeout=2.0)
+            if self.running:
+                self.stop.set()
+                self.running = False
+        except Exception:
+            pass
+        try:
+            self.alarm.cancel_ring()
+            self.alarm.shutdown()
+        except Exception:
+            pass
+        time.sleep(0.25)
+        try:
+            if self.rumble is not None:
+                self.rumble.stop()
+                self.rumble.stop_all()
+                self.rumble.close()
+                self.rumble = None
+        except Exception:
+            pass
+        try:
+            if self.tray:
+                self.tray.stop()
+                self.tray = None
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------ 闹钟
+    def open_alarm(self):
+        try:
+            alarm.AlarmDialog(self.root, self)
+        except Exception as e:
+            messagebox.showerror("震动闹钟", str(e), parent=self.root)
+
+    def _drain_alarm(self):
+        for ev in self.alarm.poll():
+            kind = ev[0]
+            try:
+                if kind == "fired":
+                    if self.tray:
+                        self.tray.notify("时间到了！按手柄任意键停止震动",
+                                         "⏰ 震动闹钟")
+                    self.status.set("⏰ 闹钟响了，按手柄任意键停")
+                    self._refresh_status()
+                elif kind == "stopped":
+                    if self.tray:
+                        self.tray.notify("闹钟已停（%s）" % ev[1], "⏰ 震动闹钟")
+                    self.status.set("闹钟已停")
+                    self._refresh_status()
+                elif kind == "error":
+                    if self.tray:
+                        self.tray.notify(ev[1], "⏰ 震动闹钟",
+                                         tray.NIIF_WARNING)
+                    self.rumble_lbl.config(text=ev[1])
+                elif kind == "off":
+                    self.status.set(ev[1])
+                    self._refresh_status()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------ 更新
     def open_update(self):
@@ -146,6 +313,7 @@ class App:
         nav_item("🕹 键位映射", None, active=True)
         nav_item("🔑 键位识别向导", self.open_wizard)
         nav_item("🧪 震动实验室", self.open_lab)
+        nav_item("⏰ 震动闹钟", self.open_alarm)
         nav_item("📖 使用说明", self.show_help)
         nav_item("💾 保存键位", self.save)
         nav_header("关于")
@@ -727,6 +895,8 @@ class App:
 
     # ------------------------------------------------------------ 实时刷新
     def pump(self):
+        self._drain_tray()
+        self._drain_alarm()
         if self.running:
             b = self.state.get("buttons", {})
             a = self.state.get("axes", {})
@@ -863,27 +1033,10 @@ class App:
 def main():
     root = tk.Tk()
     app = App(root)
-    # 关窗前务必把马达停掉，否则手柄会一直震
-    def _on_close():
-        try:
-            app.fun_stop.set()           # 娱乐模式先停
-            if app._fun_thread is not None and app._fun_thread.is_alive():
-                app._fun_thread.join(timeout=2.0)
-        except Exception:
-            pass
-        try:
-            if app.rumble is not None:
-                app.rumble.stop()
-                app.rumble.stop_all()
-                app.rumble.close()
-                app.rumble = None
-        except Exception:
-            pass
-        try:
-            root.destroy()
-        except Exception:
-            pass
-    root.protocol("WM_DELETE_WINDOW", _on_close)
+    # App.__init__ 里已经挂过了；这里再挂一次防止被覆盖。
+    # 关窗口 = 藏到托盘（没托盘就直接退），真退走 app.quit_app()：
+    # 停娱乐模式 / 停闹钟 / 马达归零 / 撤托盘，一样都不会漏
+    root.protocol("WM_DELETE_WINDOW", app.on_close_request)
     root.mainloop()
 
 

@@ -1,8 +1,16 @@
 {
-  "_说明": "buttons 的数字 = HID 按钮 usage（页 0x09），来自该手柄的 SDL 官方映射串（BETOP TCP BFM GAMEPAD），已用原始报告字节逐一核对。axes 由 usage 定位，实测确认别改。",
+  "_说明": "buttons 里的数字是 HID usage（按钮页 0x09），来自 SDL 官方映射串并已实测核对。axes 由 usage 定位，别改 usage；invert=true 反向。",
   "report_len": 11,
   "deadzone": 0.12,
   "trigger_deadzone": 0.03,
+  "rumble": true,
+  "rumble_fmt": 0,
+  "rumble_gain": 1.0,
+  "rumble_custom": null,
+  "alarm_on": false,
+  "alarm_time": "07:00",
+  "alarm_repeat": true,
+  "alarm_strength": 1.0,
   "buttons": {
     "A": 1,
     "B": 2,
@@ -33,7 +41,7 @@
       "hi": 255,
       "center": 128,
       "fallback_byte": 6,
-      "invert": true
+      "invert": false
     },
     "RX": {
       "up": 1,
@@ -51,7 +59,7 @@
       "hi": 255,
       "center": 128,
       "fallback_byte": 8,
-      "invert": true
+      "invert": false
     },
     "LT": {
       "up": 2,
@@ -77,8 +85,5 @@
     "usage": 57,
     "fallback_byte": 2
   },
-  "rumble": true,
-  "rumble_fmt": 28,
-  "rumble_gain": 3.0,
-  "rumble_custom": null
+  "guide_seen": true
 }
