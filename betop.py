@@ -75,9 +75,11 @@ def default_keymap():
         "buttons": {
             "A": 1, "B": 2, "X": 4, "Y": 5,
             "LB": 7, "RB": 8,
-            "BACK": 11, "START": 12,
+            # 实机核对（2026-10-24 用户逐键实测）：左上返回键发 usage 16，
+            # 右上菜单键发 11，蓝色箭头 LOGO 键发 12 —— 与 SDL 映射串错开一格
+            "BACK": 16, "START": 11,
             "LS": 14, "RS": 15,
-            "GUIDE": 16,
+            "GUIDE": 12,
         },
         "axes": {
             "LX": {"up": UP_GENERIC, "usage": U_X, "lo": 0, "hi": 255, "center": 128,

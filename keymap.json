@@ -19,11 +19,11 @@
     "Y": 5,
     "LB": 7,
     "RB": 8,
-    "BACK": 11,
-    "START": 12,
+    "BACK": 16,
+    "START": 11,
     "LS": 14,
     "RS": 15,
-    "GUIDE": 16
+    "GUIDE": 12
   },
   "axes": {
     "LX": {

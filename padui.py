@@ -30,11 +30,11 @@ P_PANEL   = "#2b2e39"      # 中央亮面斜面板
 P_LED     = "#3f7dff"      # 蓝色 LED 灯阵 / 右摇杆光环
 P_ABXY    = "#17181f"      # ABXY 亮面黑
 
-# ABXY 按下时的亮色（平时是亮面黑）
+# ABXY 实机点亮配色：(平时, 按下变亮) —— Y 橙 / X 蓝 / B 红 / A 绿
 ABXY_COLORS = {
-    "Y": ("#f2c200", "#ffe25e"),
-    "X": ("#1e9de8", "#7cc7ff"),
-    "B": ("#e8453c", "#ff9a92"),
+    "Y": ("#f08a1d", "#ffb75e"),
+    "X": ("#2e7bff", "#8ab4ff"),
+    "B": ("#e0333a", "#ff8a8e"),
     "A": ("#3fb54a", "#93e59b"),
 }
 
@@ -155,15 +155,15 @@ class PadView:
         round_rect(cv, dx - W, dy - W, dx + W, dy + W, 4,
                    fill=P_DPAD, outline="#3d404a")
 
-        # ABXY（右上菱形）：实物是四颗亮面黑圆钮（字母很淡），按下闪对应彩光
+        # ABXY（右上菱形）：实机点亮四色 —— Y 橙 / X 蓝 / B 红 / A 绿，字母白
         fx, fy, fr = 378, 172, 38
         for name, ox, oy in (("Y", 0, -1), ("A", 0, 1), ("X", -1, 0), ("B", 1, 0)):
             cx, cy = fx + ox * fr, fy + oy * fr
             it = cv.create_oval(cx - 17, cy - 17, cx + 17, cy + 17,
-                               fill=P_ABXY, outline="#3a3d47")
+                               fill=ABXY_COLORS[name][0], outline="#101116")
             self._add(name, it)
-            cv.create_text(cx, cy + 1, text=name, font=("Consolas", 10, "bold"),
-                           fill="#565a66")
+            cv.create_text(cx, cy + 1, text=name, font=("Consolas", 11, "bold"),
+                           fill="white")
 
         # 中央控制区：↩ BACK（左上返回键）/ ☰ START（右上菜单键），
         #            FN（装饰）+ 蓝色箭头 LOGO = GUIDE（下排，实物上的 logo 键）
@@ -205,9 +205,9 @@ class PadView:
             if name in ("LT", "RT", "LS", "RS"):
                 continue
             on = bool(b.get(name))
-            if name in ABXY_COLORS:            # 亮面黑圆钮：按下闪对应彩光
-                lit = ABXY_COLORS[name][1]
-                col = lit if on else (C_HL if self.hl == name else P_ABXY)
+            if name in ABXY_COLORS:            # 四色键：按下变亮
+                base, lit = ABXY_COLORS[name]
+                col = lit if on else (C_HL if self.hl == name else base)
             else:
                 col = P_KNOB
                 if on:
