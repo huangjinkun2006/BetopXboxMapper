@@ -1,0 +1,28 @@
+{
+  "_说明": "buttons 的数字 = HID 按钮 usage（页 0x09），来自该手柄的 SDL 官方映射串（BETOP TCP BFM GAMEPAD），已用原始报告字节逐一核对。axes 由 usage 定位，实测确认别改。",
+  "report_len": 11,
+  "deadzone": 0.12,
+  "trigger_deadzone": 0.03,
+  "buttons": {
+    "A": 1,
+    "B": 2,
+    "X": 4,
+    "Y": 5,
+    "LB": 7,
+    "RB": 8,
+    "BACK": 11,
+    "START": 12,
+    "LS": 14,
+    "RS": 15,
+    "GUIDE": 16
+  },
+  "axes": {
+    "LX": {"up": 1, "usage": 48, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 5, "invert": false},
+    "LY": {"up": 1, "usage": 49, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 6, "invert": true},
+    "RX": {"up": 1, "usage": 50, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 7, "invert": false},
+    "RY": {"up": 1, "usage": 53, "lo": 0, "hi": 255, "center": 128, "fallback_byte": 8, "invert": true},
+    "LT": {"up": 2, "usage": 197, "lo": 0, "hi": 255, "unipolar": true, "fallback_byte": 9, "invert": false},
+    "RT": {"up": 2, "usage": 196, "lo": 0, "hi": 255, "unipolar": true, "fallback_byte": 10, "invert": false}
+  },
+  "hat": {"up": 1, "usage": 57, "fallback_byte": 2}
+}
