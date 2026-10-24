@@ -5,6 +5,7 @@
 由 Tk 侧 poll() 取走（子线程绝不直接碰 Tk 组件）。
 """
 import datetime
+import math
 import queue
 import threading
 import time
@@ -19,6 +20,141 @@ except Exception:
 
 DEFAULT_TIME = "07:00"
 MAX_RING_SEC = 120          # 最多震两分钟，防止没人管一直震
+STEP = 0.05                 # 铃声采样间隔（秒）
+
+
+# ---------------------------------------------------------------- 铃声库
+# 每个铃声是一个函数 f(t, s) -> (大马达, 小马达)，
+# t = 从开始响起的秒数，s = 基础强度（已乘过 alarm_strength）。
+# 想加新铃声就往 RINGTONES 里塞一组 (名字, 说明, 函数)。
+def _r_continuous(t, s):
+    """一直猛震，最不容易被忽略"""
+    return s, s
+
+
+def _r_pulse(t, s):
+    """急促脉冲：震 0.45 停 0.18"""
+    return (s, s) if (t % 0.63) < 0.45 else (0, 0)
+
+
+def _r_heart(t, s):
+    """心跳：咚咚…咚咚…"""
+    p = t % 1.6
+    return (s, s) if (p < 0.13 or 0.26 <= p < 0.39) else (0, 0)
+
+
+def _r_ram(t, s):
+    """渐强：每 3 秒从 25% 爬到满，叫不醒就一直加码"""
+    v = int(s * (0.25 + 0.75 * ((t % 3.0) / 3.0)))
+    return v, v
+
+
+def _r_beep(t, s):
+    """三连滴：滴-滴-滴，停一下再来"""
+    p = t % 2.0
+    return (s, s) if (p < 0.1 or 0.2 <= p < 0.3 or 0.4 <= p < 0.5) else (0, 0)
+
+
+def _r_wave(t, s):
+    """波浪：2 秒一个来回，强弱平滑起伏"""
+    v = int(s * (0.35 + 0.65 * (0.5 + 0.5 * math.sin(2 * math.pi * t / 2.0))))
+    return v, v
+
+
+def _r_siren(t, s):
+    """警笛：短促连击，间隔由快到慢"""
+    p = t % 2.2
+    for i, (a, b) in enumerate(((0, .08), (.16, .24), (.36, .44),
+                                (.60, .68), (.88, .96))):
+        if a <= p < b:
+            return s, s
+    return 0, 0
+
+
+def _morse(seq, dot=0.12, dash=0.36):
+    """把 '.--' 之类的串变成 [(是否响, 时长), ...]"""
+    out = []
+    for i, ch in enumerate(seq):
+        if ch == ".":
+            out.append((1, dot))
+        elif ch == "-":
+            out.append((1, dash))
+        elif ch == " ":
+            out.append((0, dash))
+        if i < len(seq) - 1:
+            out.append((0, dot))
+    return out
+
+
+_SOS = _morse("... --- ...")
+_SOS_GAP = 1.6
+_SOS_TOTAL = sum(d for _o, d in _SOS) + _SOS_GAP
+
+
+def _r_sos(t, s):
+    """SOS 摩斯电码：... --- ..."""
+    p = t % _SOS_TOTAL
+    for on, dur in _SOS:
+        if p < dur:
+            return (s, s) if on else (0, 0)
+        p -= dur
+    return 0, 0
+
+
+RINGTONES = [
+    ("连续猛震", "一直震到停，最不容易睡过头", _r_continuous),
+    ("急促脉冲", "震 0.45 秒停 0.18 秒，最有节奏感", _r_pulse),
+    ("心跳", "咚咚…咚咚…，像有人在拍你", _r_heart),
+    ("渐强", "每 3 秒从 25% 爬到满，越拖越猛", _r_ram),
+    ("三连滴", "滴-滴-滴，停一下再来", _r_beep),
+    ("波浪", "2 秒一个来回，强弱平滑起伏", _r_wave),
+    ("警笛", "短促连击，间隔由快到慢", _r_siren),
+    ("SOS 摩斯", "…---…，好玩但费马达", _r_sos),
+]
+
+
+def ringtone(idx):
+    """按下标取铃声，越界就退回第 0 个"""
+    try:
+        i = int(idx)
+    except Exception:
+        i = 0
+    if i < 0 or i >= len(RINGTONES):
+        i = 0
+    return RINGTONES[i]
+
+
+def ring_names():
+    return [r[0] for r in RINGTONES]
+
+
+def play_ring(rm, idx, strength, seconds, stop_ev=None, on_done=None):
+    """按选中的铃声震 seconds 秒；stop_ev 被置位就立刻停并归零"""
+    _name, _desc, fn = ringtone(idx)
+    base = max(30, min(255, int(255 * float(strength or 1.0))))
+    t0 = time.time()
+    try:
+        while time.time() - t0 < seconds:
+            if stop_ev is not None and stop_ev.is_set():
+                break
+            try:
+                big, small = fn(time.time() - t0, base)
+                rm.set(big, small)
+            except Exception:
+                pass
+            time.sleep(STEP)
+    finally:
+        try:
+            rm.set(0, 0)
+            rm.stop()
+            rm.stop_all()
+        except Exception:
+            pass
+        if on_done is not None:
+            try:
+                on_done()
+            except Exception:
+                pass
 
 
 class AlarmClock:
@@ -55,7 +191,11 @@ class AlarmClock:
         if self.ring_ev.is_set():
             self._finish("程序退出，闹钟已停")
 
-    def set(self, hhmm, on=True, repeat=None, strength=None):
+    @property
+    def ring_index(self):
+        return int(self.km.get("alarm_ring", 0) or 0)
+
+    def set(self, hhmm, on=True, repeat=None, strength=None, ring=None):
         """改配置。闹钟线程每 0.4 秒看一眼，改完立刻生效"""
         self.km["alarm_time"] = hhmm
         self.km["alarm_on"] = bool(on)
@@ -63,6 +203,8 @@ class AlarmClock:
             self.km["alarm_repeat"] = bool(repeat)
         if strength is not None:
             self.km["alarm_strength"] = float(strength)
+        if ring is not None:
+            self.km["alarm_ring"] = int(ring)
         if not on and self.ring_ev.is_set():
             self._finish("闹钟已关闭")
 
@@ -127,21 +269,11 @@ class AlarmClock:
         threading.Thread(target=self._watch, daemon=True).start()
 
     def _buzz(self):
-        """断断续续地猛震（一直平震容易被人忽略）"""
-        s = max(30, min(255, int(255 * float(self.km.get("alarm_strength", 1.0)))))
-        t0 = time.time()
+        """按选中的铃声震，直到被按键叫停或超时"""
+        idx = self.ring_index
         try:
-            while not self._buzz_stop.is_set() and time.time() - t0 < MAX_RING_SEC:
-                try:
-                    self._rm.set(s, s)
-                except Exception:
-                    pass
-                time.sleep(0.45)
-                try:
-                    self._rm.set(0, 0)
-                except Exception:
-                    pass
-                time.sleep(0.18)
+            play_ring(self._rm, idx, self.km.get("alarm_strength", 1.0),
+                      MAX_RING_SEC, self._buzz_stop)
         finally:
             if self.ring_ev.is_set():
                 self._finish("响了 %d 秒自动停" % MAX_RING_SEC)
@@ -240,7 +372,7 @@ if tk is not None:
     class AlarmDialog(tk.Toplevel):
         """震动闹钟设置窗"""
 
-        W, H = 420, 400
+        W, H = 420, 486
 
         def __init__(self, master, app):
             super().__init__(master)
@@ -332,6 +464,29 @@ if tk is not None:
                      command=lambda _v: self._apply()).pack(side="left", padx=8)
             self._upd_st_lbl()
 
+            # 铃声
+            rr = tk.Frame(box, bg="#fff")
+            rr.pack(fill="x", padx=18, pady=(12, 2))
+            tk.Label(rr, text="铃声", font=(FONT, 9), fg="#3a3e46",
+                     bg="#fff").pack(side="left")
+            names = ring_names()
+            self.ring_var = tk.StringVar(value=names[self.alarm.ring_index])
+            om = tk.OptionMenu(rr, self.ring_var, *names)
+            om.config(font=(FONT, 9), bg="#fff", relief="flat", width=11,
+                      highlightthickness=0, activebackground="#e0334a",
+                      activeforeground="#fff", cursor="hand2")
+            try:
+                om["menu"].config(font=(FONT, 9), bg="#fff")
+            except Exception:
+                pass
+            om.pack(side="left", padx=8)
+            self.ring_desc = tk.Label(box, text="", font=(FONT, 8),
+                                      fg="#8a8f99", bg="#fff", wraplength=350,
+                                      justify="left")
+            self.ring_desc.pack(anchor="w", padx=20, pady=(0, 2))
+            self.ring_var.trace_add("write", lambda *_a: self._on_ring())
+            self._upd_ring_desc()
+
             # 状态 + 倒计时
             self.state_lbl = tk.Label(box, text="", font=(FONT, 11, "bold"),
                                       fg="#8a8f99", bg="#fff")
@@ -348,10 +503,11 @@ if tk is not None:
                                     padx=16, pady=7, cursor="hand2",
                                     command=self.toggle)
             self.btn_on.pack(side="left")
-            tk.Button(br, text="现在试响 3 秒", font=(FONT, 10), bg="#fff",
-                      fg="#4a4e57", relief="flat", padx=12, pady=7,
-                      cursor="hand2", command=self.test_ring).pack(side="left",
-                                                                   padx=8)
+            self.btn_test = tk.Button(br, text="试听铃声", font=(FONT, 10),
+                                      bg="#fff", fg="#4a4e57", relief="flat",
+                                      padx=12, pady=7, cursor="hand2",
+                                      command=self.test_ring)
+            self.btn_test.pack(side="left", padx=8)
             tk.Button(br, text="关闭", font=(FONT, 10), bg="#fff",
                       fg="#4a4e57", relief="flat", padx=14, pady=7,
                       cursor="hand2", command=self.destroy).pack(side="right")
@@ -370,11 +526,39 @@ if tk is not None:
                                   self._int(self.m_var.get(), 0))
             self.alarm.set(hhmm, on=bool(self.km.get("alarm_on")),
                            repeat=bool(self.rep_var.get()),
-                           strength=float(self.st_var.get()))
+                           strength=float(self.st_var.get()),
+                           ring=self._ring_idx())
             try:
                 betop.save_keymap(self.km)
             except Exception:
                 pass
+
+        # ------------------------------------------------------------ 铃声
+        def _ring_idx(self):
+            """下拉里选中的名字 -> RINGTONES 下标"""
+            try:
+                return ring_names().index(self.ring_var.get())
+            except Exception:
+                return 0
+
+        def _upd_ring_desc(self):
+            try:
+                self.ring_desc.config(text=ringtone(self._ring_idx())[1])
+            except Exception:
+                pass
+
+        def _on_ring(self):
+            self._upd_ring_desc()
+            idx = self._ring_idx()
+            self.alarm.set(self.km.get("alarm_time", DEFAULT_TIME),
+                           on=bool(self.km.get("alarm_on")),
+                           repeat=bool(self.rep_var.get()),
+                           strength=float(self.st_var.get()), ring=idx)
+            try:
+                betop.save_keymap(self.km)
+            except Exception:
+                pass
+            self._test_stop()      # 换铃声就把正在试听的掐掉
 
         @staticmethod
         def _int(v, dft):
@@ -388,7 +572,8 @@ if tk is not None:
             hhmm = "%02d:%02d" % (self._int(self.h_var.get(), 7),
                                   self._int(self.m_var.get(), 0))
             self.alarm.set(hhmm, on=on, repeat=bool(self.rep_var.get()),
-                           strength=float(self.st_var.get()))
+                           strength=float(self.st_var.get()),
+                           ring=self._ring_idx())
             self._upd_btn()
             try:
                 betop.save_keymap(self.km)
@@ -402,13 +587,46 @@ if tk is not None:
             on = bool(self.km.get("alarm_on"))
             self.btn_on.config(text=("停用闹钟" if on else "启用闹钟"),
                                bg=("#5a5e66" if on else "#e0334a"))
-            self.state_lbl.config(text=("已启用 · %s"
-                                        % self.km.get("alarm_time", DEFAULT_TIME)
-                                        if on else "未启用"),
+            if on:
+                txt = "已启用 · %s · %s" % (
+                    self.km.get("alarm_time", DEFAULT_TIME),
+                    ringtone(self.km.get("alarm_ring", 0))[0])
+            else:
+                txt = "未启用"
+            self.state_lbl.config(text=txt,
                                   fg=("#3a8f5a" if on else "#8a8f99"))
 
+        def _test_stop(self):
+            """掐掉正在试听的铃声（换铃声 / 关窗时都调一次）"""
+            ev = getattr(self, "_test_ev", None)
+            if ev is not None:
+                try:
+                    ev.set()
+                except Exception:
+                    pass
+
         def test_ring(self):
-            """立刻震 3 秒，验证命令格式对不对"""
+            """用当前选中的铃声试听 5 秒，再点一次按钮立刻停"""
+            if getattr(self, "_test_ev", None) is not None:
+                self._test_stop()
+                return
+            idx = self._ring_idx()
+            st = float(self.st_var.get())
+            ev = threading.Event()
+            self._test_ev = ev
+            self.btn_test.config(text="停止试听", fg="#e0334a")
+            self.cd_lbl.config(text="正在用「%s」试听…（再点按钮停止）"
+                                    % ringtone(idx)[0], fg="#8a8f99")
+
+            def done():
+                self._test_ev = None
+                try:
+                    self.after(0, lambda: (
+                        self.btn_test.config(text="试听铃声", fg="#4a4e57"),
+                        self.cd_lbl.config(text="试听完毕", fg="#3a8f5a")))
+                except Exception:
+                    pass
+
             def go():
                 try:
                     rm = betop.Rumble(
@@ -417,24 +635,29 @@ if tk is not None:
                 except Exception as e:
                     self.after(0, lambda: self.cd_lbl.config(
                         text="打不开震动通道：%s" % e, fg="#c0392b"))
+                    done()
                     return
-                s = max(30, min(255, int(255 * float(self.st_var.get()))))
                 try:
-                    for _i in range(4):
-                        rm.set(s, s)
-                        time.sleep(0.45)
-                        rm.set(0, 0)
-                        time.sleep(0.18)
+                    play_ring(rm, idx, st, 5.0, ev)
                 finally:
                     try:
-                        rm.stop()
-                        rm.stop_all()
                         rm.close()
                     except Exception:
                         pass
-                self.after(0, lambda: self.cd_lbl.config(text="试响完毕"))
+                done()
+
             threading.Thread(target=go, daemon=True).start()
-            self.cd_lbl.config(text="正在试响…（按手柄任意键不会停，3 秒自动结束）")
+
+        def destroy(self):
+            """关窗时别把铃声留在震着"""
+            try:
+                self._test_stop()
+            except Exception:
+                pass
+            try:
+                super().destroy()
+            except Exception:
+                pass
 
         def _tick(self):
             try:

@@ -71,6 +71,7 @@ def default_keymap():
         "alarm_time": "07:00",
         "alarm_repeat": True,    # True = 每天都响；False = 只响一次就自动关
         "alarm_strength": 1.0,   # 响铃时的震动强度 0.1..3.0
+        "alarm_ring": 0,         # 铃声（alarm.RINGTONES 下标），0=连续猛震
         "buttons": {
             "A": 1, "B": 2, "X": 4, "Y": 5,
             "LB": 7, "RB": 8,
