@@ -11,7 +11,7 @@ from tkinter import messagebox
 
 import betop
 import hidraw
-from padui import PadView, round_rect
+from padui import PadView, round_rect, apply_icon
 
 FONT = "Microsoft YaHei UI"
 C_BG = "#f5f6f8"
@@ -45,12 +45,17 @@ STEPS = [
         "中间那张手柄图会随着你按的手柄实时亮键，可以顺手验一遍键位对不对。",
         "不用了就点「停止映射」，虚拟手柄会被撤掉。",
     ]),
-    ("⑤ 进游戏里选控制器", [
+    ("⑤ 按键不对？直接改键", [
+        "启动映射后按手柄，中间那张图会跟着亮。亮的键跟你实际按的对不上？不用重新跑向导。",
+        "主界面右下角有「改键（先启动映射）」：点键名旁边的红色「改」，再按下手柄上你想当这个键用的实体键就绑好了。",
+        "摇杆上下反了：轴旁边有「反向」，点一下就翻过来。所有改动保存在 keymap.json，下次打开还是这套。",
+    ]),
+    ("⑥ 进游戏里选控制器", [
         "以基岩版 Minecraft 为例：设置 → 控制器 → 设备选「Xbox 360 手柄」，就能用了。",
         "凡是只认 XInput 的游戏（大多数手柄游戏）现在都能认到它。",
         "要是游戏里没反应：先关掉游戏再启动映射，然后重开游戏，顺序反了认不到。",
     ]),
-    ("⑥ 调震动", [
+    ("⑦ 调震动", [
         "右侧「震动强度」滑块最高能拉到 300%，嫌震得轻就往上拉。",
         "完全不震：先看界面上那行「游戏震动 → 大马达 xx」，有数字说明游戏发过来了。",
         "还是不行就进「🧪 震动实验室」扫一遍命令，让程序自己找出这把能震的那条。",
@@ -65,9 +70,10 @@ class Guide(tk.Toplevel):
         self.i = 0
         self.pad = None
         self._anim = None
-        self.title("新手教程 · 六步把北通变成 Xbox 手柄")
+        self.title("新手教程 · 七步把北通变成 Xbox 手柄")
         self.geometry("820x680")
         self.configure(bg=C_BG)
+        apply_icon(self)
         self.transient(app.root)
 
         head = tk.Frame(self, bg=C_BG)
@@ -154,6 +160,7 @@ class Guide(tk.Toplevel):
         self.res_lbl.config(text="", fg=C_SUB)
         self.act.config(text=["检测驱动装好没", "重新检测手柄",
                               "打开键位向导", "回到主界面",
+                              "去主界面改键",
                               "知道了", "打开震动实验室"][self.i])
         self._draw()
 
@@ -258,6 +265,44 @@ class Guide(tk.Toplevel):
                        font=(FONT, 9), fill=C_SUB)
 
     def _d4(self):
+        """改键面板示意（对照主界面右下角那块）"""
+        cv = self.cv
+        # 面板卡片
+        round_rect(cv, 168, 44, 392, 268, 10, fill="#f7f8fa", outline="#cfd4dc")
+        cv.create_text(280, 64, text="改键（先启动映射）",
+                       font=(FONT, 10, "bold"), fill="#33373f")
+        cv.create_line(182, 80, 378, 80, fill="#e2e5ea", width=1)
+        # 两列键名 chip，BACK 那个高亮
+        names = ["Y", "X", "B", "A", "LB", "RB", "BACK", "START", "L3", "R3"]
+        for i, nm in enumerate(names):
+            col, row = i % 2, i // 2
+            x1, y1 = 186 + col * 100, 92 + row * 28
+            x2, y2 = x1 + 90, y1 + 22
+            hot = nm == "BACK"
+            round_rect(cv, x1, y1, x2, y2, 5,
+                       fill=("#e6f1fb" if hot else "#f1f2f5"),
+                       outline=(C_BLUE if hot else "#dcdfe5"))
+            cv.create_text(x1 + 18, y1 + 11, text=nm, anchor="w",
+                           font=("Consolas", 9, "bold"),
+                           fill=("#0C447C" if hot else "#5a5e66"))
+            cv.create_text(x2 - 18, y1 + 11, text="改",
+                           font=(FONT, 9), fill=(C_BLUE if hot else C_RED))
+        cv.create_text(280, 246, text="…（LOGO 同样能改）",
+                       font=(FONT, 8), fill=C_SUB)
+        # 箭头解释
+        cv.create_line(118, 186, 182, 178, fill=C_BLUE, width=2, arrow="last")
+        cv.create_text(96, 200, text="点「改」", font=(FONT, 9), fill=C_BLUE)
+        cv.create_line(378, 186, 428, 176, fill=C_BLUE, width=2, arrow="last")
+        cv.create_text(444, 168, text="再按手柄上\n想当它用的键",
+                       font=(FONT, 9), fill=C_BLUE, justify="left")
+        cv.create_text(280, 298, text="按了 A 亮成别的键 / 手柄键位跟别人不一样，都用这里改",
+                       font=(FONT, 10), fill="#444")
+        # 底部：摇杆反向提示条
+        round_rect(cv, 120, 318, 440, 350, 8, fill="#fdf3e7", outline="#e8a54b")
+        cv.create_text(280, 334, text="摇杆上下反了？轴旁边的「反向」点一下就翻过来",
+                       font=(FONT, 9), fill="#8a5a13")
+
+    def _d5(self):
         cv = self.cv
         round_rect(cv, 120, 70, 440, 300, 10, fill="#eef1f5", outline="#cfd4dc")
         cv.create_rectangle(120, 70, 440, 100, fill="#dde3ea", outline="")
@@ -275,7 +320,7 @@ class Guide(tk.Toplevel):
         cv.create_text(280, 330, text="顺序很重要：先启动映射，再开游戏",
                        font=(FONT, 10, "bold"), fill=C_RED)
 
-    def _d5(self):
+    def _d6(self):
         cv = self.cv
         for k, (amp, col) in enumerate(((11, C_BLUE), (8, "#8e44ad"),
                                         (16, C_OK))):
@@ -314,7 +359,7 @@ class Guide(tk.Toplevel):
     def on_action(self):
         try:
             [self.check_driver, self.check_pad, self.open_wizard,
-             self.go_main, self.none, self.open_lab][self.i]()
+             self.go_main, self.go_main, self.none, self.open_lab][self.i]()
         except Exception as e:
             messagebox.showerror("出错了", str(e), parent=self)
 

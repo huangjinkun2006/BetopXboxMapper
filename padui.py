@@ -237,3 +237,22 @@ class PadView:
                 cv.coords(it, [0, 0, 0, 0])
             else:
                 cv.coords(it, _rr_pts(x1, 54, x1 + (x2 - x1) * v, 72, 9))
+
+
+# ---- 程序图标（icon.ico 跟随 exe 打包，开发态用源码目录那份）----
+def app_icon_path():
+    import os
+    import sys
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    p = os.path.join(base, "icon.ico")
+    return p if os.path.exists(p) else None
+
+
+def apply_icon(win):
+    """给 Tk 窗口挂手柄图标；失败静默（不挡主流程）"""
+    p = app_icon_path()
+    if p:
+        try:
+            win.iconbitmap(p)
+        except Exception:
+            pass

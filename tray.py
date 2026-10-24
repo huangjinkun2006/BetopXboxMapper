@@ -88,7 +88,21 @@ class BITMAPINFOHEADER(ctypes.Structure):
 
 
 def make_icon(size=32):
-    """画一个游戏键样式的图标：红圈 + 深色盘面 + 中心亮点"""
+    """优先加载打包好的 icon.ico（手柄图），没有再退回程序画的圆盘"""
+    try:
+        from padui import app_icon_path
+        p = app_icon_path()
+        if p:
+            h = _user32.LoadImageW(None, p, 1, size, size, 0x0010)
+            if h:
+                return h
+    except Exception:
+        pass
+    return _procedural_icon(size)
+
+
+def _procedural_icon(size=32):
+    """兜底：程序画的图标——红圈 + 深色盘面 + 中心亮点"""
     bi = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), size, -size,
                           1, 32, 0, 0, 0, 0, 0, 0)
     bits = ctypes.c_void_p()

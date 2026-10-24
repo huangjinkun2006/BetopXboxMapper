@@ -20,7 +20,7 @@ except Exception:
 
 import betop
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
-                   C_LINE, C_OK, C_HL, FONT, PadView)
+                   C_LINE, C_OK, C_HL, FONT, PadView, apply_icon)
 
 BTN_STEPS = [
     ("A", "A 键 — 右边靠下那个（MC 里跳跃）"),
@@ -45,6 +45,7 @@ class Wizard:
         root.geometry("940x650")
         root.resizable(False, False)
         root.configure(bg=C_BG)
+        apply_icon(root)
 
         self.dev = None
         self.km = betop.load_keymap()

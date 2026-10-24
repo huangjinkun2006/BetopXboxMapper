@@ -17,6 +17,7 @@ from tkinter import messagebox
 
 import betop
 import hidraw
+from padui import apply_icon
 
 RID = 2
 FONT = "Microsoft YaHei UI"
@@ -69,6 +70,7 @@ class Lab(tk.Toplevel):
         self.title("震动实验室 · 找最猛的那条命令")
         self.geometry("760x620")
         self.configure(bg="#f5f6f8")
+        apply_icon(self)
         self.transient(master)
 
         self.cands = candidates()

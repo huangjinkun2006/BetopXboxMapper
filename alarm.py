@@ -406,6 +406,11 @@ if tk is not None:
             self.alarm = app.alarm
             self.title("震动闹钟")
             self.configure(bg="#f5f6f8")
+            try:
+                from padui import apply_icon
+                apply_icon(self)
+            except Exception:
+                pass
             self.resizable(False, False)
             self.transient(master)
             try:
