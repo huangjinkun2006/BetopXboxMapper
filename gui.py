@@ -27,6 +27,7 @@ except Exception:
 import betop
 import guide
 import lab
+import updater
 
 HERE = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
         else os.path.dirname(os.path.abspath(__file__)))
@@ -72,6 +73,38 @@ class App:
             except Exception:
                 pass
             root.after(700, self.open_guide)
+        # 启动时后台静默查一次更新，结果只显示在左下角，不弹窗
+        root.after(1200, self.auto_check_update)
+
+    # ------------------------------------------------------------ 更新
+    def open_update(self):
+        """弹出检查更新窗口"""
+        try:
+            updater.UpdateDialog(self.root)
+        except Exception as e:
+            messagebox.showerror("检查更新", str(e), parent=self.root)
+
+    def auto_check_update(self):
+        """后台查一次，只更新左下角那行字"""
+        try:
+            updater.check_async_tk(self.root, self.on_update_result)
+        except Exception:
+            pass
+
+    def on_update_result(self, info, err, cmp_):
+        """主线程回调（check_async_tk 保证），直接改左下角"""
+        try:
+            if err:
+                txt, clr = "检查更新失败", "#c9a227"
+            elif cmp_ > 0:
+                txt, clr = "🎉 有新版本 v" + info["version"], C_ACC
+            elif cmp_ < 0:
+                txt, clr = "🛠 开发版 v" + updater.APP_VERSION, "#c2c6cd"
+            else:
+                txt, clr = "✅ 已是最新版", C_OK
+            self.foot_upd.config(text=txt, fg=clr)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 界面
     def _build(self):
@@ -115,8 +148,18 @@ class App:
         nav_item("🧪 震动实验室", self.open_lab)
         nav_item("📖 使用说明", self.show_help)
         nav_item("💾 保存键位", self.save)
-        tk.Label(sb, text="BTP-V1T 先游定制版\nv1.4", font=(FONT, 8), fg="#c2c6cd",
-                 bg=C_CARD, justify="center").pack(side="bottom", pady=14)
+        nav_header("关于")
+        nav_item("🔄 检查更新", self.open_update)
+
+        ft = tk.Frame(sb, bg=C_CARD)
+        ft.pack(side="bottom", pady=12)
+        tk.Label(ft, text="BTP-V1T 先游定制版\nv" + updater.APP_VERSION,
+                 font=(FONT, 8), fg="#c2c6cd", bg=C_CARD,
+                 justify="center").pack()
+        self.foot_upd = tk.Label(ft, text="检查更新…", font=(FONT, 8),
+                                 fg="#c2c6cd", bg=C_CARD, cursor="hand2")
+        self.foot_upd.pack(pady=(5, 0))
+        self.foot_upd.bind("<Button-1>", lambda e: self.open_update())
 
         # ================= 主区 =================
         main = tk.Frame(self.root, bg=C_BG)
