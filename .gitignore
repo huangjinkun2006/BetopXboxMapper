@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# 本地构建产物 / 打包输出
+build*/
+dist/
+*.spec
+installer/
+BetopMapper/
+
+# 本地调过的键位配置不上库，仓库里保留出厂默认那份
+# 如果你改动了 keymap.json，先手动备份再决定是否提交
+# keymap.json
+
+# 抓包日志、临时排查文件
+sniff_log.txt
+*.log
+_hidden/
+
+.vscode/
+.idea/
