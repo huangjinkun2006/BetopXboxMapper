@@ -1,0 +1,411 @@
+"""键位识别向导（图形版）：界面上高亮一个键，你按手柄上对应的键，自动记录 HID usage。
+
+用法：python wizard.py
+和主界面 gui.py 共用 padui.py 里那张 Xbox 手柄图。
+"""
+import os
+import sys
+
+# 依赖在 main() 里统一自检，打包成 exe 后会自动跳过
+
+import threading
+import time
+import tkinter as tk
+from tkinter import messagebox
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+import betop
+from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
+                   C_LINE, C_OK, C_HL, FONT, PadView)
+
+BTN_STEPS = [
+    ("A", "A 键 — 右边靠下那个（MC 里跳跃）"),
+    ("B", "B 键 — 右边靠右那个（MC 里潜行/放下）"),
+    ("X", "X 键 — 右边靠左那个"),
+    ("Y", "Y 键 — 右边靠上那个"),
+    ("LB", "LB 左肩键 — 左上方那个"),
+    ("RB", "RB 右肩键 — 右上方那个"),
+    ("BACK", "BACK / SELECT — 左边那个小键（◁）"),
+    ("START", "START — 右边那个小键（▷）"),
+    ("LS", "左摇杆垂直往下按（L3）"),
+    ("RS", "右摇杆垂直往下按（R3）"),
+    ("GUIDE", "中间 LOGO 键（◎，没有就点「跳过」）"),
+]
+STICK_STEPS = [("左摇杆", "LY", "LX"), ("右摇杆", "RY", "RX")]
+
+
+class Wizard:
+    def __init__(self, root):
+        self.root = root
+        root.title("键位识别向导 · 北通手柄")
+        root.geometry("940x650")
+        root.resizable(False, False)
+        root.configure(bg=C_BG)
+
+        self.dev = None
+        self.km = betop.load_keymap()
+        self.phase = "connect"
+        self.i = 0            # 当前按钮步骤
+        self.si = 0           # 当前摇杆步骤
+        self.sub = "up"       # 摇杆子步骤：up / right
+        self.best = 0.0
+        self.deadline = 0.0
+        self.wait_sec = 10.0     # 每个键的等待时间（秒）
+        self.cand = None         # 待确认的候选 usage（防抖用）
+        self.settle = False      # 切步骤后第一帧丢弃
+        self.cand_n = 0
+        self.prev_pressed = set()
+        self.log_lines = []
+        self.state = {"buttons": {}, "axes": {k: 0.0 for k in betop.AXIS_TARGETS}}
+
+        self.tip = tk.StringVar(value="正在连接手柄…")
+        self.prog = tk.StringVar(value="")
+        self.detail = tk.StringVar(value="把手柄插好、开机")
+        self._build()
+        threading.Thread(target=self._connect, daemon=True).start()
+        self.root.after(80, self._tick)
+
+    # ------------------------------------------------------------ 界面
+    def _build(self):
+        # 顶部条
+        top = tk.Frame(self.root, bg=C_CARD)
+        top.pack(fill="x")
+        inner = tk.Frame(top, bg=C_CARD)
+        inner.pack(fill="x", padx=22, pady=11)
+        tk.Label(inner, text="键位识别向导", font=(FONT, 15, "bold"),
+                 fg=C_TEXT, bg=C_CARD).pack(side="left")
+        self.chip = tk.Label(inner, text="● 连接中", font=(FONT, 9), fg=C_SUB,
+                             bg="#f4f5f8", padx=10, pady=4)
+        self.chip.pack(side="left", padx=14)
+        tk.Label(inner, text="每键等待", font=(FONT, 9), fg=C_SUB,
+                 bg=C_CARD).pack(side="left")
+        self.wait_var = tk.StringVar(value="10")
+        tk.Spinbox(inner, from_=3, to=60, width=3, font=(FONT, 9),
+                   textvariable=self.wait_var, relief="flat", bg="#f4f5f8",
+                   buttonbackground="#e8e9ee", command=self._on_wait).pack(side="left",
+                                                                            padx=(4, 0))
+        self.wait_var.trace_add("write", lambda *_: self._on_wait())
+        tk.Label(inner, text="秒", font=(FONT, 9), fg=C_SUB,
+                 bg=C_CARD).pack(side="left", padx=(2, 12))
+        tk.Button(inner, text="完成并保存", font=(FONT, 10, "bold"), fg="white",
+                  bg=C_ACC, activebackground=C_ACC_DK, activeforeground="white",
+                  relief="flat", padx=18, pady=6, cursor="hand2",
+                  command=self.finish).pack(side="right")
+
+        row = tk.Frame(self.root, bg=C_BG)
+        row.pack(fill="x", padx=18, pady=14)
+
+        # 左：手柄图
+        lc = tk.Frame(row, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
+        lc.pack(side="left")
+        hdr = tk.Frame(lc, bg=C_CARD)
+        hdr.pack(fill="x", padx=16, pady=(10, 2))
+        tk.Label(hdr, text="按住这个键", font=(FONT, 11, "bold"), fg=C_TEXT,
+                 bg=C_CARD).pack(side="left")
+        tk.Label(hdr, text="橙色的就是要你按的键", font=(FONT, 8), fg=C_SUB,
+                 bg=C_CARD).pack(side="left", padx=8)
+        self.canvas = tk.Canvas(lc, width=560, height=370, bg=C_CARD,
+                                highlightthickness=0)
+        self.canvas.pack(padx=8, pady=(2, 10))
+        self.pv = PadView(self.canvas)
+
+        # 右：提示 / 进度 / 日志
+        rc = tk.Frame(row, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
+        rc.pack(side="left", fill="both", ipadx=10)
+        tk.Label(rc, textvariable=self.prog, font=(FONT, 9), fg=C_SUB,
+                 bg=C_CARD).pack(anchor="w", padx=18, pady=(14, 2))
+        tk.Label(rc, textvariable=self.tip, font=(FONT, 13, "bold"), fg=C_TEXT,
+                 bg=C_CARD, wraplength=290, justify="left").pack(anchor="w", padx=18)
+        tk.Label(rc, textvariable=self.detail, font=(FONT, 9), fg=C_SUB,
+                 bg=C_CARD, wraplength=290, justify="left").pack(anchor="w",
+                                                                 padx=18, pady=(4, 6))
+        # 倒计时
+        cdr = tk.Frame(rc, bg=C_CARD)
+        cdr.pack(fill="x", padx=18, pady=(0, 6))
+        self.cd = tk.Label(cdr, text="", font=("Consolas", 20, "bold"),
+                           fg=C_HL, bg=C_CARD)
+        self.cd.pack(side="left")
+        self.cdbar = tk.Canvas(cdr, width=150, height=8, bg="#f0f1f4",
+                               highlightthickness=0)
+        self.cdbar.pack(side="left", padx=10)
+        tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=16)
+        btns = tk.Frame(rc, bg=C_CARD)
+        btns.pack(fill="x", padx=18, pady=10)
+        for t, cmd in (("跳过此键", self.skip), ("再等一会", self.more_time),
+                       ("重新开始", self.restart)):
+            tk.Button(btns, text=t, font=(FONT, 9), fg=C_TEXT, bg="#f4f5f8",
+                      activebackground="#e8e9ee", relief="flat", padx=12, pady=5,
+                      cursor="hand2", command=cmd).pack(side="left", padx=(0, 8))
+        tk.Label(rc, text="识别记录", font=(FONT, 9, "bold"), fg=C_TEXT,
+                 bg=C_CARD).pack(anchor="w", padx=18, pady=(6, 2))
+        self.logbox = tk.Text(rc, width=38, height=12, font=("Consolas", 9),
+                              bg="#fafbfc", fg="#4a4e57", relief="flat",
+                              highlightthickness=1, highlightbackground=C_LINE)
+        self.logbox.pack(padx=18, pady=(0, 14))
+        self.logbox.configure(state="disabled")
+
+    def _as_dict(self, pressed):
+        """原始 usage 集合 -> {目标键名: True}，用于点亮手柄图"""
+        rev = {}
+        for k, v in self.km.get("buttons", {}).items():
+            rev.setdefault(v, k)
+        return {rev[u]: True for u in pressed if u in rev}
+
+    def log(self, s):
+        self.log_lines.append(s)
+        self.logbox.configure(state="normal")
+        self.logbox.delete("1.0", "end")
+        self.logbox.insert("1.0", "\n".join(self.log_lines[-40:]))
+        self.logbox.configure(state="disabled")
+
+    # ------------------------------------------------------------ 连接
+    def _connect(self):
+        try:
+            self.dev = betop.open_device(wait=True, timeout=120)
+            self._dev_ok = True
+        except Exception as e:
+            self._dev_err = str(e)
+            self._dev_ok = False
+
+    # ------------------------------------------------------------ 主循环
+    def _tick(self):
+        if self.phase == "connect":
+            if getattr(self, "_dev_ok", None) is True:
+                self.phase = "btn"
+                self.chip.config(text="● 已连接", fg=C_OK)
+                self.log(f"连上了（后端：{'HidP 精确解码' if self.dev.use_hidp else '字节兜底'}）")
+                self.start_btn()
+            elif getattr(self, "_dev_ok", None) is False:
+                self.tip.set("没找到手柄")
+                self.detail.set(f"{getattr(self, '_dev_err', '')}\n\n"
+                                "插好 USB、开开机再点「重新开始」。"
+                                "如果主程序正在跑映射，先把它停掉。")
+                self.chip.config(text="● 未连接", fg=C_SUB)
+                self._dev_ok = None
+            self.root.after(120, self._tick)
+            return
+
+        r = None
+        try:
+            r = self.dev.read() if self.dev else None
+        except Exception:
+            r = None
+        if r:
+            pressed, _ = self.dev.decode(list(r))
+            _, axes = betop.parse_report(self.dev, list(r), self.km)
+            self.state["buttons"] = pressed
+            self.state["axes"] = axes
+            self.pv.set_state(self._as_dict(pressed), axes)
+            if self.settle:
+                # 刚切到新键时的第一帧可能还带着上一个键的残留，丢掉不算数
+                self.settle = False
+                self.prev_pressed = set(pressed)
+            else:
+                self._advance(pressed, axes)
+                self.prev_pressed = set(pressed)
+        self._tick_cd()
+        self.root.after(60, self._tick)
+
+    # ------------------------------------------------------------ 步骤
+    def start_btn(self):
+        if self.i >= len(BTN_STEPS):
+            self.start_stick()
+            return
+        name, desc = BTN_STEPS[self.i]
+        self.pv.highlight(name)
+        self.prog.set(f"第 1 步 · 按钮 {self.i + 1}/{len(BTN_STEPS)}")
+        self.tip.set(f"按住 {name}")
+        self.detail.set(desc)
+        self.phase = "btn"
+        self._arm()
+
+    # ---- 计时 ----
+    def _on_wait(self):
+        """等待时间输入框变化时更新"""
+        try:
+            v = float(self.wait_var.get())
+        except Exception:
+            return
+        self.wait_sec = max(1.0, min(120.0, v))
+        if self.phase in ("btn", "release", "stick", "trig"):
+            self.deadline = time.time() + self.wait_sec
+
+    def _arm(self):
+        """给当前步骤重新装填计时，并清掉上一次按键的残留"""
+        self.deadline = time.time() + self.wait_sec
+        self.settle = True
+        self.prev_pressed = set()
+        self.cand = None
+        self.cand_n = 0
+
+    def more_time(self):
+        self.deadline = time.time() + self.wait_sec
+        self.log("再等一轮")
+
+    def _tick_cd(self):
+        """刷新倒计时数字和进度条"""
+        if self.phase not in ("btn", "release", "stick", "trig"):
+            self.cd.config(text="")
+            self.cdbar.delete("all")
+            return
+        left = max(0.0, self.deadline - time.time())
+        self.cd.config(text=f"{left:.1f}", fg=(C_HL if left > 3 else "#e8474f"))
+        self.cdbar.delete("all")
+        frac = 0.0 if self.wait_sec <= 0 else max(0.0, min(1.0, left / self.wait_sec))
+        self.cdbar.create_rectangle(0, 0, 150 * frac, 8, fill=C_ACC, outline="")
+
+    def start_stick(self):
+        self.pv.highlight(None)
+        if self.si >= len(STICK_STEPS):
+            self.start_trig()
+            return
+        label, ky, kx = STICK_STEPS[self.si]
+        self.prog.set(f"第 2 步 · {label}方向 {self.si + 1}/{len(STICK_STEPS)}")
+        self.phase = "stick"
+        self.sub = "up"
+        self.best = 0.0
+        self._arm()
+        self.tip.set(f"把{label}往上推到底，保持住")
+        self.detail.set(f"推住别松，{self.wait_sec:.0f} 秒内自动判定；推得够狠会提前结束")
+
+    def start_trig(self):
+        self.prog.set("第 3 步 · 扳机")
+        self.phase = "trig"
+        self._arm()
+        self.tip.set("把 LT 和 RT 都扣到底")
+        self.detail.set(f"{self.wait_sec:.0f} 秒内读数，扣到底会提前结束")
+        self.tmax = {"LT": 0.0, "RT": 0.0}
+
+    def _advance(self, pressed, axes):
+        if self.phase == "btn":
+            new = set(pressed) - self.prev_pressed
+            if new:
+                u = sorted(new)[0]
+                name = BTN_STEPS[self.i][0]
+                self.km["buttons"][name] = u
+                self.log(f"{name} = 按钮 {u}")
+                self.phase = "release"
+                self.deadline = time.time() + self.wait_sec
+                self.tip.set(f"记录好了：{name} = {u}")
+                self.detail.set("松开手，继续下一个")
+            elif time.time() >= self.deadline:
+                name = BTN_STEPS[self.i][0]
+                self.log(f"{name}：等了 {self.wait_sec:.0f} 秒没按，跳过（保持原值）")
+                self.i += 1
+                self.start_btn()
+        elif self.phase == "release":
+            if not pressed or time.time() >= self.deadline:
+                self.i += 1
+                self.start_btn()
+        elif self.phase == "stick":
+            label, ky, kx = STICK_STEPS[self.si]
+            key = ky if self.sub == "up" else kx
+            v = axes.get(key, 0.0)
+            if abs(v) > abs(self.best):
+                self.best = v
+            # 推得够狠就提前判定，不用干等；一直没推就耗到超时
+            held = self.wait_sec - (self.deadline - time.time())
+            if (abs(self.best) > 0.5 and held > 0.7) or time.time() >= self.deadline:
+                self._finish_stick_sub()
+        elif self.phase == "trig":
+            for k in ("LT", "RT"):
+                self.tmax[k] = max(self.tmax[k], axes.get(k, 0.0))
+            held = self.wait_sec - (self.deadline - time.time())
+            hit = max(self.tmax.values()) > 0.5
+            if (hit and held > 0.9) or time.time() >= self.deadline:
+                self.log(f"扳机峰值  LT {self.tmax['LT']:+.2f}  RT {self.tmax['RT']:+.2f}")
+                self.phase = "done"
+                self.tip.set("全部搞定，点「完成并保存」")
+                self.detail.set("也可以在主界面点任意键单独微调")
+
+    def _finish_stick_sub(self):
+        label, ky, kx = STICK_STEPS[self.si]
+        key = ky if self.sub == "up" else kx
+        v = self.best
+        spec = self.km["axes"].get(key, {})
+        if abs(v) < 0.5:
+            self.log(f"{label} {key}：没检测到推动，跳过")
+        elif v < 0:
+            spec["invert"] = not spec.get("invert", False)
+            self.log(f"{label} {key}：方向反了（{v:+.2f}），已自动翻转")
+        else:
+            self.log(f"{label} {key}：方向 OK（{v:+.2f}）")
+        if self.sub == "up":
+            self.sub = "right"
+            self.best = 0.0
+            self._arm()
+            self.tip.set(f"再把{label}往右推到底，保持住")
+        else:
+            self.si += 1
+            self.start_stick()
+
+    # ------------------------------------------------------------ 操作
+    def skip(self):
+        if self.phase in ("btn", "release"):
+            name = BTN_STEPS[self.i][0]
+            self.log(f"{name}：跳过（保持原值）")
+            self.i += 1
+            self.start_btn()
+        elif self.phase == "stick":
+            self.log(f"{STICK_STEPS[self.si][0]}：跳过校准")
+            self.si += 1
+            self.start_stick()
+        elif self.phase == "trig":
+            self.phase = "done"
+            self.tip.set("搞定，点「完成并保存」")
+
+    def restart(self):
+        self.i = self.si = 0
+        self.sub = "up"
+        self.log_lines.clear()
+        self.log("重新开始")
+        if self.dev:
+            self.start_btn()
+        else:
+            self.phase = "connect"
+            self._dev_ok = None
+            threading.Thread(target=self._connect, daemon=True).start()
+
+    def finish(self):
+        try:
+            betop.save_keymap(self.km)
+            messagebox.showinfo("完成", "键位已保存到 keymap.json\n"
+                                       "打开主界面点「启动映射」就能用了")
+        except Exception as e:
+            messagebox.showerror("保存失败", str(e))
+        try:
+            if self.dev:
+                self.dev.close()
+        except Exception:
+            pass
+        self.root.destroy()
+
+
+def main():
+    # 缺依赖就弹窗告诉用户怎么装（打包成 exe 时依赖已内置，跳过）
+    if not getattr(sys, "frozen", False):
+        try:
+            import vgamepad  # noqa: F401
+        except ImportError as exc:
+            r = tk.Tk()
+            r.withdraw()
+            messagebox.showerror(
+                "缺少依赖 vgamepad",
+                "请先安装依赖：\n\n    pip install vgamepad\n\n"
+                f"当前错误：{exc}")
+            try:
+                r.destroy()
+            except Exception:
+                pass
+            sys.exit(1)
+    root = tk.Tk()
+    Wizard(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
