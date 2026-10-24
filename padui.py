@@ -165,21 +165,24 @@ class PadView:
             cv.create_text(cx, cy + 1, text=name, font=("Consolas", 10, "bold"),
                            fill="#565a66")
 
-        # 中央控制区：⌂ GUIDE / ☰ BACK（上排），FN（装饰）+ 蓝色先游 logo START（下排）
+        # 中央控制区：↩ BACK（左上返回键）/ ☰ START（右上菜单键），
+        #            FN（装饰）+ 蓝色箭头 LOGO = GUIDE（下排，实物上的 logo 键）
         it = cv.create_oval(248, 134, 270, 156, fill=P_ABXY, outline="#41444f")
-        self._add("GUIDE", it)
-        cv.create_text(259, 145, text="⌂", font=(FONT, 12, "bold"), fill="#9aa0ae")
+        self._add("BACK", it)
+        cv.create_text(259, 145, text="↩", font=(FONT, 13, "bold"), fill="#9aa0ae")
 
         it = cv.create_oval(298, 134, 320, 156, fill=P_ABXY, outline="#41444f")
-        self._add("BACK", it)
+        self._add("START", it)
         cv.create_text(309, 145, text="☰", font=(FONT, 12, "bold"), fill="#9aa0ae")
 
         round_rect(cv, 246, 170, 272, 190, 5, fill=P_ABXY, outline="#41444f")
         cv.create_text(259, 180, text="FN", font=("Consolas", 8, "bold"),
                        fill="#8a8f9c")
 
+        # 蓝色箭头 logo 键 = GUIDE
+        cv.create_oval(292, 166, 324, 196, fill="", outline=P_LED, width=1)
         it = cv.create_oval(296, 170, 320, 192, fill=P_ABXY, outline="#41444f")
-        self._add("START", it)
+        self._add("GUIDE", it)
         cv.create_text(307, 180, text="➤", font=(FONT, 11, "bold"), fill=P_LED)
 
         # 中央蓝色 LED 灯阵（4x3 小圆点，实物特征）
