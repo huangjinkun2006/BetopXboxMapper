@@ -212,6 +212,13 @@ class AlarmClock:
         if self.ring_ev.is_set():
             self._finish("手动停止")
 
+    def trigger_now(self):
+        """不等设定时间，立刻按完整流程响一次：按任意键停，最多 MAX_RING_SEC"""
+        if self.ring_ev.is_set():
+            return False
+        self._fire()
+        return True
+
     # ------------------------------------------------------------ 主循环
     def _next_dt(self, hhmm=None):
         try:
@@ -279,51 +286,68 @@ class AlarmClock:
                 self._finish("响了 %d 秒自动停" % MAX_RING_SEC)
 
     def _watch(self):
-        """监听手柄：任意键 / 扳机 / 摇杆大幅偏移都算“按到了”"""
+        """监听手柄：任意键 / 扳机 / 摇杆大幅偏移都算“按到了”
+
+        响铃头 0.5 秒先不判断，免得刚震起来就被残留输入掐掉。
+        """
         pad = None
         try:
             pad = betop.HidPad().open()
         except Exception:
             pad = None
         deadline = time.time() + MAX_RING_SEC + 1
+        t0 = time.time()
         while not self._buzz_stop.is_set() and time.time() < deadline:
-            if self._any_input(pad):
+            if time.time() - t0 > 0.5 and self._any_input(pad):
                 self._finish("检测到按键，已停止")
                 return
             time.sleep(0.04)
 
     def _any_input(self, pad):
-        if pad is not None:
-            try:
-                r = pad.read()
-                if r:
-                    buttons, axes = betop.parse_report(pad, list(r), self.km)
-                    if buttons:
-                        return True
-                    for k in ("LX", "LY", "RX", "RY"):
-                        if abs(axes.get(k, 0.0)) > 0.6:
-                            return True
-                    for k in ("LT", "RT"):
-                        if abs(axes.get(k, 0.0)) > 0.3:
-                            return True
-            except Exception:
-                pass
-            return False
-        if self.state_getter is not None:          # 打不开第二路就蹭主界面的状态
-            try:
-                st = self.state_getter() or {}
-                if st.get("buttons"):
+        """两条路都查：主界面的实时状态（映射跑着时最准）+ 自己开的第二路 HID。
+
+        两个坑：
+        1) buttons 是 {'A': False, ...} 这种全 False 的字典，
+           `if buttons:` 对非空 dict 恒为真 —— 必须用 any(values())
+        2) 扳机没扣时解出来是 -1.0（松开到底），abs(-1) > 0.3 也恒真，
+           所以扳机只能判正方向：> 0.3 才算真的扣下去了
+        """
+        for st in (self._state_from_app(), self._state_from_pad(pad)):
+            if st is None:
+                continue
+            buttons, axes = st
+            if (any(buttons.values()) if isinstance(buttons, dict)
+                    else bool(buttons)):
+                return True
+            for k in ("LX", "LY", "RX", "RY"):
+                if abs(axes.get(k, 0.0)) > 0.6:
                     return True
-                a = st.get("axes") or {}
-                for k in ("LX", "LY", "RX", "RY"):
-                    if abs(a.get(k, 0.0)) > 0.6:
-                        return True
-                for k in ("LT", "RT"):
-                    if abs(a.get(k, 0.0)) > 0.3:
-                        return True
-            except Exception:
-                pass
+            for k in ("LT", "RT"):
+                if axes.get(k, -1.0) > 0.3:
+                    return True
         return False
+
+    def _state_from_app(self):
+        """主界面正在跑映射时，直接蹭它的按键状态"""
+        if self.state_getter is None:
+            return None
+        try:
+            st = self.state_getter() or {}
+            return (st.get("buttons") or {}, st.get("axes") or {})
+        except Exception:
+            return None
+
+    def _state_from_pad(self, pad):
+        """自己再开一路 HID 读（没启动映射时靠它）"""
+        if pad is None:
+            return None
+        try:
+            r = pad.read()
+            if not r:
+                return None
+            return betop.parse_report(pad, list(r), self.km)
+        except Exception:
+            return None
 
     def _finish(self, why):
         if not self.ring_ev.is_set():
@@ -363,8 +387,9 @@ class AlarmClock:
         if secs <= 0:
             return "马上就要响了"
         h, m = secs // 3600, (secs % 3600) // 60
-        return ("还有 %d 小时 %d 分" % (h, m)) if h else ("还有 %d 分 %d 秒"
-                                                          % (m, secs % 60))
+        when = "" if self.next_at.date() == datetime.date.today() else "明天 "
+        return (("%s还有 %d 小时 %d 分" % (when, h, m)) if h else
+                ("%s还有 %d 分 %d 秒" % (when, m, secs % 60)))
 
 
 # ---------------------------------------------------------------- 界面
@@ -500,14 +525,17 @@ if tk is not None:
             br.pack(fill="x", padx=20, pady=(0, 16))
             self.btn_on = tk.Button(br, text="启用闹钟", font=(FONT, 10, "bold"),
                                     bg="#e0334a", fg="#fff", relief="flat",
-                                    padx=16, pady=7, cursor="hand2",
+                                    padx=12, pady=7, cursor="hand2",
                                     command=self.toggle)
             self.btn_on.pack(side="left")
             self.btn_test = tk.Button(br, text="试听铃声", font=(FONT, 10),
                                       bg="#fff", fg="#4a4e57", relief="flat",
-                                      padx=12, pady=7, cursor="hand2",
+                                      padx=10, pady=7, cursor="hand2",
                                       command=self.test_ring)
-            self.btn_test.pack(side="left", padx=8)
+            self.btn_test.pack(side="left", padx=6)
+            tk.Button(br, text="立即响", font=(FONT, 10), bg="#fff",
+                      fg="#e0334a", relief="flat", padx=10, pady=7,
+                      cursor="hand2", command=self.ring_now).pack(side="left")
             tk.Button(br, text="关闭", font=(FONT, 10), bg="#fff",
                       fg="#4a4e57", relief="flat", padx=14, pady=7,
                       cursor="hand2", command=self.destroy).pack(side="right")
@@ -595,6 +623,16 @@ if tk is not None:
                 txt = "未启用"
             self.state_lbl.config(text=txt,
                                   fg=("#3a8f5a" if on else "#8a8f99"))
+
+        def ring_now(self):
+            """立刻按闹钟完整流程响一次（按手柄任意键停，最多 2 分钟）"""
+            self._apply()
+            self._test_stop()
+            if self.alarm.trigger_now():
+                self.cd_lbl.config(text="正在响！按手柄任意键停止",
+                                   fg="#e0334a")
+            else:
+                self.cd_lbl.config(text="已经在响了", fg="#c9a227")
 
         def _test_stop(self):
             """掐掉正在试听的铃声（换铃声 / 关窗时都调一次）"""
