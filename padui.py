@@ -21,14 +21,16 @@ C_OK      = "#22c07a"
 C_PRESS   = "#5dc21e"
 C_HL      = "#ffb02e"      # 向导高亮：待按下的键
 
-# ---- 手柄配色（扁平微软风：近黑机身 + 四色 ABXY）----
-P_BODY    = "#242428"      # 机身近黑
-P_KNOB    = "#3d3d42"      # 摇杆帽 / view / menu 深灰
-P_RING    = "#1a1a1e"      # 摇杆底座
-P_DPAD    = "#8f8f96"      # 十字键中灰
-P_GUIDE   = "#ffffff"      # 中央白圆
+# ---- 手柄配色（北通 BTP-V1T 实物风：哑光近黑 + 中央蓝色灯阵）----
+P_BODY    = "#20222a"      # 机身哑光黑
+P_KNOB    = "#2e3038"      # 摇杆帽 / 按钮深灰
+P_RING    = "#14151a"      # 摇杆底座
+P_DPAD    = "#191b22"      # 十字键（亮面黑）
+P_PANEL   = "#2b2e39"      # 中央亮面斜面板
+P_LED     = "#3f7dff"      # 蓝色 LED 灯阵 / 右摇杆光环
+P_ABXY    = "#17181f"      # ABXY 亮面黑
 
-# ABXY 微软四色：(平时, 按下变亮)
+# ABXY 按下时的亮色（平时是亮面黑）
 ABXY_COLORS = {
     "Y": ("#f2c200", "#ffe25e"),
     "X": ("#1e9de8", "#7cc7ff"),
@@ -99,7 +101,8 @@ class PadView:
         # 扳机
         for name, x1, x2 in (("LT", 160, 238), ("RT", 322, 400)):
             bg = round_rect(cv, x1, 52, x2, 74, 11, fill=P_RING, outline="")
-            fl = round_rect(cv, x1 + 2, 54, x1 + 3, 72, 9, fill=C_PRESS, outline="")
+            fl = round_rect(cv, 0, 0, 0, 0, 9, fill=C_PRESS, outline="")
+            cv.coords(fl, [0, 0, 0, 0])
             self.trig[name] = (x1 + 2, x2 - 2, fl)
             self._add(name, bg)
             cv.create_text((x1 + x2) // 2, 42, text=name,
@@ -112,6 +115,10 @@ class PadView:
             cv.create_text((x1 + x2) // 2, 92, text=name,
                            font=("Consolas", 8, "bold"), fill="white")
 
+        # 中央亮面斜面板（实物上半部那块梯形饰板，压在摇杆底座之下）
+        cv.create_polygon([234, 118, 334, 118, 360, 198, 208, 198],
+                          smooth=True, fill=P_PANEL, outline="#3a3d48")
+
         # 左摇杆（上左）
         lx, ly, lr = 206, 182, 40
         cv.create_oval(lx - lr, ly - lr, lx + lr, ly + lr, fill=P_RING, outline="")
@@ -120,52 +127,67 @@ class PadView:
         cv.create_text(lx, ly, text="LS", font=("Consolas", 8, "bold"), fill="#c9c9cf")
         self.knob_l = (k, lx, ly)
 
-        # 右摇杆（下中）
-        rx, ry, rr = 352, 260, 40
+        # 右摇杆（下中）：底座外圈带一圈蓝色 LED 光环（实物特征）
+        rx, ry, rr = 352, 268, 40
+        cv.create_oval(rx - rr - 4, ry - rr - 4, rx + rr + 4, ry + rr + 4,
+                       fill="", outline=P_LED, width=2)
         cv.create_oval(rx - rr, ry - rr, rx + rr, ry + rr, fill=P_RING, outline="")
         k2 = cv.create_oval(rx - 25, ry - 25, rx + 25, ry + 25, fill=P_KNOB, outline="")
         self._add("RS", k2)
         cv.create_text(rx, ry, text="RS", font=("Consolas", 8, "bold"), fill="#c9c9cf")
         self.knob_r = (k2, rx, ry)
 
-        # 十字键（下左）：一整个灰色十字
-        dx, dy, ds = 224, 262, 28
+        # 十字键（下左）：连成一体的大十字（亮面黑）
+        dx, dy, ds = 220, 262, 26
+        L, W = ds * 1.5, ds * 0.44
         for name, ox, oy in (("UP", 0, -1), ("DOWN", 0, 1),
                              ("LEFT", -1, 0), ("RIGHT", 1, 0)):
             if ox:
-                x1, x2 = dx + ox * ds - ds * 0.52, dx + ox * ds + ds * 0.52
-                y1, y2 = dy - ds * 0.36, dy + ds * 0.36
+                x1, x2 = (dx, dx + ox * L) if ox > 0 else (dx + ox * L, dx)
+                y1, y2 = dy - W, dy + W
             else:
-                x1, x2 = dx - ds * 0.36, dx + ds * 0.36
-                y1, y2 = dy + oy * ds - ds * 0.52, dy + oy * ds + ds * 0.52
-            it = round_rect(cv, x1, y1, x2, y2, 5, fill=P_DPAD, outline="")
+                x1, x2 = dx - W, dx + W
+                y1, y2 = (dy, dy + oy * L) if oy > 0 else (dy + oy * L, dy)
+            it = round_rect(cv, x1, y1, x2, y2, 7, fill=P_DPAD, outline="#3d404a")
             self.dpad_items[name] = it
             self._add(name, it)
+        # 中心小块补缝
+        round_rect(cv, dx - W, dy - W, dx + W, dy + W, 4,
+                   fill=P_DPAD, outline="#3d404a")
 
-        # ABXY（右上菱形）：微软四色，Y 黄 / X 蓝 / B 红 / A 绿
-        # （画在右摇杆之后，A 压在摇杆环上沿，跟参考图一致）
-        fx, fy, fr = 368, 186, 42
+        # ABXY（右上菱形）：实物是四颗亮面黑圆钮（字母很淡），按下闪对应彩光
+        fx, fy, fr = 378, 172, 38
         for name, ox, oy in (("Y", 0, -1), ("A", 0, 1), ("X", -1, 0), ("B", 1, 0)):
             cx, cy = fx + ox * fr, fy + oy * fr
             it = cv.create_oval(cx - 17, cy - 17, cx + 17, cy + 17,
-                               fill=ABXY_COLORS[name][0], outline="")
+                               fill=P_ABXY, outline="#3a3d47")
             self._add(name, it)
-            cv.create_text(cx, cy, text=name, font=("Consolas", 11, "bold"),
-                           fill="white")
+            cv.create_text(cx, cy + 1, text=name, font=("Consolas", 10, "bold"),
+                           fill="#565a66")
 
-        # VIEW / MENU：两个小深灰圆
-        for name, cx, cy in (("BACK", 246, 216), ("START", 316, 218)):
-            it = cv.create_oval(cx - 11, cy - 11, cx + 11, cy + 11,
-                                fill=P_KNOB, outline="")
-            self._add(name, it)
-            cv.create_text(cx, cy, text=("◁" if name == "BACK" else "▷"),
-                           font=(FONT, 9, "bold"), fill="#b9b9c0")
-
-        # 中间发光 LOGO：白色大圆
-        self.glow = cv.create_oval(258, 144, 310, 196, fill="", outline=P_GUIDE, width=2)
-        it = cv.create_oval(264, 150, 304, 190, fill=P_GUIDE, outline="")
+        # 中央控制区：⌂ GUIDE / ☰ BACK（上排），FN（装饰）+ 蓝色先游 logo START（下排）
+        it = cv.create_oval(248, 134, 270, 156, fill=P_ABXY, outline="#41444f")
         self._add("GUIDE", it)
-        cv.create_text(284, 170, text="✕", font=(FONT, 15, "bold"), fill="#3a3a40")
+        cv.create_text(259, 145, text="⌂", font=(FONT, 12, "bold"), fill="#9aa0ae")
+
+        it = cv.create_oval(298, 134, 320, 156, fill=P_ABXY, outline="#41444f")
+        self._add("BACK", it)
+        cv.create_text(309, 145, text="☰", font=(FONT, 12, "bold"), fill="#9aa0ae")
+
+        round_rect(cv, 246, 170, 272, 190, 5, fill=P_ABXY, outline="#41444f")
+        cv.create_text(259, 180, text="FN", font=("Consolas", 8, "bold"),
+                       fill="#8a8f9c")
+
+        it = cv.create_oval(296, 170, 320, 192, fill=P_ABXY, outline="#41444f")
+        self._add("START", it)
+        cv.create_text(307, 180, text="➤", font=(FONT, 11, "bold"), fill=P_LED)
+
+        # 中央蓝色 LED 灯阵（4x3 小圆点，实物特征）
+        for r in range(3):
+            for c in range(4):
+                x0, y0 = 268 + c * 14, 222 + r * 14
+                cv.create_oval(x0, y0, x0 + 5, y0 + 5, fill=P_LED, outline="")
+        self.glow = None
 
     # -------------------------------------------------- 刷新
     def highlight(self, name):
@@ -180,9 +202,9 @@ class PadView:
             if name in ("LT", "RT", "LS", "RS"):
                 continue
             on = bool(b.get(name))
-            if name in ABXY_COLORS:            # 四色键：平时原色，按下变亮
-                base, lit = ABXY_COLORS[name]
-                col = lit if on else (C_HL if self.hl == name else base)
+            if name in ABXY_COLORS:            # 亮面黑圆钮：按下闪对应彩光
+                lit = ABXY_COLORS[name][1]
+                col = lit if on else (C_HL if self.hl == name else P_ABXY)
             else:
                 col = P_KNOB
                 if on:
