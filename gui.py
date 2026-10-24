@@ -43,7 +43,7 @@ T_SHOW, T_TOGGLE, T_ALARM, T_TEST, T_UPDATE, T_EXIT = 1, 2, 3, 4, 5, 6
 
 # 配色 / 手柄图统一放在 padui.py（识别向导 wizard.py 用的是同一套）
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
-                   C_LINE, C_OK, C_PRESS, P_IDLE, FONT, round_rect, PadView)
+                   C_LINE, C_OK, C_PRESS, P_KNOB, FONT, round_rect, PadView)
 
 C_RED = C_ACC          # 旧变量名兼容
 C_RED_DK = C_ACC_DK
