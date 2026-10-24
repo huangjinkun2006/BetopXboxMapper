@@ -245,9 +245,9 @@ class App:
 
     # ------------------------------------------------------------ 更新
     def open_update(self):
-        """弹出检查更新窗口"""
+        """弹出检查更新窗口（查完顺手把左下角那行字也刷新）"""
         try:
-            updater.UpdateDialog(self.root)
+            updater.UpdateDialog(self.root, on_result=self.on_update_result)
         except Exception as e:
             messagebox.showerror("检查更新", str(e), parent=self.root)
 
@@ -261,6 +261,9 @@ class App:
     def on_update_result(self, info, err, cmp_):
         """主线程回调（check_async_tk 保证），直接改左下角"""
         try:
+            if err:
+                # 启动那一下可能是网络刚起来，1 分钟后再试一次
+                self.root.after(60000, self.auto_check_update)
             if err:
                 txt, clr = "检查更新失败", "#c9a227"
             elif cmp_ > 0:
