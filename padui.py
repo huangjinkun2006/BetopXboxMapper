@@ -88,13 +88,13 @@ class PadView:
     IMG_W, IMG_H = 1365, 1024
     PAD_W = 360            # 正面图显示宽（"把手柄缩小"就调这里）
     PAD_X = 60             # 正面图左上 x（480 标定，居中）
-    PAD_Y = 236            # 正面图顶部 y
+    PAD_Y = 198            # 正面图顶部 y
     CANVAS_W = 480
-    CANVAS_H = 510
+    CANVAS_H = 474
 
     # 顶视图（assets/pad_top.png，1448x1086）：裁掉白边后整条铺在顶部
     TOP_BBOX = (38, 204, 1411, 867)    # 内容区（原图坐标）
-    TOP_W = 456                        # 显示宽（480 标定）
+    TOP_W = 380                        # 显示宽（480 标定）
     TOP_Y = 6                          # 显示顶部 y
     # LT/LB/RT/RB 在顶视图原图里的区域 (x1, y1, x2, y2)，按下亮绿
     TOP_REGIONS = {
