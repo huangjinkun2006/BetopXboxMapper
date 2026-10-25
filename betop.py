@@ -364,8 +364,20 @@ class Rumble:
     # 所以要不停重发，游戏里的持续震动才不会变成"抖一下"。
     HB_INTERVAL = 0.20
 
+    _LIVE = []      # 所有存活的 Rumble 实例（含临时测试用的），给界面抖动联动
+
+    @classmethod
+    def max_level(cls):
+        """当前全部实例的最大马达强度 0.0~1.0；没在震就是 0"""
+        act = [r for r in cls._LIVE
+               if getattr(r, "_target", None) not in (None, (0, 0, 0, 0))]
+        if not act:
+            return 0.0
+        return min(1.0, max(max(r._target) for r in act) / 255.0)
+
     def __init__(self, fmt=0, enabled=True, custom=None, custom_trig=None,
                  merge=True):
+        Rumble._LIVE.append(self)
         self.dev = None
         self.fmt = fmt
         self.enabled = enabled
@@ -600,6 +612,51 @@ class Rumble:
             except Exception:
                 pass
         self.dev = None
+        try:
+            Rumble._LIVE.remove(self)
+        except ValueError:
+            pass
+
+
+def battery_info(vid=VID, tries=6):
+    """尽力读手柄电量（电量是 HID 标准_usage，能不能读全看固件报不报）。
+
+    返回：
+      None               手柄不在线
+      ("usb", None)      在线，但读不到电量（插 USB 线供电时常见）
+      (percent, None)    读到了 0~100 的电量
+    注意：要开第二个 HID 句柄读报告，可能花 1~2 秒，放线程里调。
+    """
+    import hidraw
+    rows = hidraw.list_devices(vid)
+    if not rows:
+        return None
+    devs = []
+    try:
+        for _v, _p, _up, _us, _inlen, path in rows:
+            try:
+                d = hidraw.RawHid()
+                d.open_path(path)
+                devs.append(d)
+            except Exception:
+                pass
+        for _ in range(tries):
+            for d in devs:
+                r = d.read()
+                if not r:
+                    continue
+                # 电池系统页(0x85)的强度 / 通用桌面页的 Battery Strength
+                for page, usage in ((0x85, 0x85), (0x01, 0x85), (0x85, 0x20)):
+                    v = d.usage_value(r, page, usage)
+                    if v is not None and 0 <= v <= 100:
+                        return (int(v), None)
+        return ("usb", None)
+    finally:
+        for d in devs:
+            try:
+                d.close()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------- 输出

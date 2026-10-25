@@ -452,8 +452,14 @@ class App:
                  fg=C_TEXT, bg=C_CARD).pack(side="left")
         self.chip = tk.Label(inner, text="● " + self.status.get(), font=(FONT, 9),
                              fg=C_SUB, bg="#f4f5f8", padx=10, pady=4,
-                             wraplength=380, justify="left")
+                             wraplength=240, justify="left")
         self.chip.pack(side="left", padx=14)
+        # 手柄电量（插上手柄后自动检测，有线读不到就显示 USB 供电）
+        self.lbl_batt = tk.Label(inner, text="🔋 …", font=(FONT, 9),
+                                 fg=C_SUB, bg="#f4f5f8", padx=10, pady=4)
+        self.lbl_batt.pack(side="left", padx=(0, 8))
+        self._batt_seq = 0
+        self._refresh_batt()
         self.btn_run = tk.Button(inner, text="启动映射", font=(FONT, 10, "bold"),
                                  fg="white", bg=C_RED, activebackground=C_RED_DK,
                                  activeforeground="white", relief="flat",
@@ -483,7 +489,7 @@ class App:
                  bg=C_CARD).pack(side="left")
         tk.Label(hdr, text="按下会亮绿 · 点任意键可重新绑定", font=(FONT, 8),
                  fg=C_SUB, bg=C_CARD).pack(side="left", padx=8)
-        self.canvas = tk.Canvas(lc, width=480, height=370, bg=C_CARD,
+        self.canvas = tk.Canvas(lc, width=480, height=432, bg=C_CARD,
                                 highlightthickness=0)
         self.canvas.pack(padx=8, pady=(2, 10))
         self.pad_view = PadView(self.canvas)
@@ -1415,7 +1421,38 @@ class App:
             self.pad_view.set_state(b, a)
             for k, bar in self.bars.items():
                 self.draw_bar(bar, a.get(k, 0.0), k)
+        # 震动联动：有马达在转就让图上的手柄跟着抖
+        try:
+            self.pad_view.set_shake(betop.Rumble.max_level())
+        except Exception:
+            pass
+        # 电量：每 ~8 秒重探一次（读 HID 要开句柄，别太勤）
+        self._batt_seq += 1
+        if self._batt_seq >= 115:
+            self._batt_seq = 0
+            self._refresh_batt()
         self.root.after(70, self.pump)
+
+    def _refresh_batt(self):
+        """后台线程探测电量，回来刷新标签（battery_info 要开句柄会卡 1~2 秒）"""
+        def work():
+            try:
+                info = betop.battery_info()
+            except Exception:
+                info = None
+            self.root.after(0, lambda: self._show_batt(info))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_batt(self, info):
+        if info is None:
+            self.lbl_batt.config(text="🔋 未连接", fg="#c2c6cd")
+        elif isinstance(info, tuple) and info and info[0] == "usb":
+            self.lbl_batt.config(text="🔌 USB 供电", fg=C_SUB)
+        elif isinstance(info, tuple) and isinstance(info[0], int):
+            self.lbl_batt.config(text=f"🔋 {info[0]}%",
+                                 fg=C_OK if info[0] > 20 else C_RED)
+        else:
+            self.lbl_batt.config(text="🔋 --", fg=C_SUB)
 
     def draw_bar(self, cv, v, k=""):
         cv.delete("all")
