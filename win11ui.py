@@ -76,9 +76,14 @@ class Card(tk.Frame):
         return pts
 
     def _on_body(self, e):
+        # 宽高分开判断：绑在一起时宽度收敛后高度变化会被跳过，
+        # 卡片就会比内容矮，把手柄图裁掉一截
         w = max(self._min_w or 0, e.width) + 2 * self.pad
+        h = e.height + 2 * self.pad
         if abs(self.cv.winfo_reqwidth() - w) > 1:
-            self.cv.configure(width=w, height=e.height + 2 * self.pad)
+            self.cv.configure(width=w)
+        if abs(self.cv.winfo_reqheight() - h) > 1:
+            self.cv.configure(height=h)
 
     def _on_cv(self, e=None):
         cv = self.cv

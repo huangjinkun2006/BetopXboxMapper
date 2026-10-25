@@ -47,7 +47,8 @@ class Wizard:
         self.root = root
         root.title("键位识别向导 · 北通手柄")
         root.geometry("940x650")
-        root.resizable(False, False)
+        root.resizable(True, True)
+        root.minsize(880, 600)
         root.configure(bg=C_BG)
         apply_icon(root)
         win11ui.apply(root)
@@ -103,7 +104,7 @@ class Wizard:
                   command=self.finish).pack(side="right")
 
         row = tk.Frame(self.root, bg=C_BG)
-        row.pack(fill="x", padx=18, pady=14)
+        row.pack(fill="both", expand=True, padx=18, pady=14)
 
         # 左：手柄图
         lc_card = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
@@ -119,6 +120,39 @@ class Wizard:
                                 highlightthickness=0)
         self.canvas.pack(padx=8, pady=(2, 10))
         self.pv = PadView(self.canvas)
+
+        # 手柄图跟着窗口缩放（同主界面的量化重绘策略）
+        self._pad_sz = (560, 370)
+        self._pad_job = None
+
+        def _pad_fit(e=None):
+            try:
+                rw, rh = row.winfo_width(), row.winfo_height()
+            except Exception:
+                return
+            if rw < 60 or rh < 60:
+                return
+            bw = max(280, min(rw - 380, 760))
+            bh = max(280, min(rh - 84, 900))
+            if bw / bh > 480 / 474:
+                bw = int(bh * 480 / 474)
+            else:
+                bh = int(bw * 474 / 480)
+            bw = max(200, bw // 40 * 40)
+            bh = int(bw * 474 / 480)
+            if (bw, bh) == self._pad_sz:
+                return
+            self._pad_sz = (bw, bh)
+            self.canvas.configure(width=bw, height=bh)
+            self.pv.draw()
+
+        def _pad_fit_debounced(e=None):
+            if self._pad_job:
+                self.root.after_cancel(self._pad_job)
+            self._pad_job = self.root.after(120, _pad_fit)
+
+        row.bind("<Configure>", _pad_fit_debounced)
+        self.root.after(200, _pad_fit)
 
         # 右：提示 / 进度 / 日志
         rc_card = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=6)

@@ -67,8 +67,13 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("北通游戏厅 · 手柄映射器")
-        root.geometry("1080x730")
-        root.resizable(False, False)
+        # 可缩放：内容太少会挤成一团，给个下限；手柄图按比例跟着变（见 _pad_fit）
+        root.resizable(True, True)
+        root.minsize(940, 620)
+        _w0, _h0 = 1080, 730
+        root.geometry("%dx%d+%d+%d" % (_w0, _h0,
+                                       (root.winfo_screenwidth() - _w0) // 2,
+                                       (root.winfo_screenheight() - _h0) // 2))
         root.configure(bg=C_BG)
         apply_icon(root)
         win11ui.apply(root)          # Mica + 深色标题栏（老系统静默跳过）
@@ -485,7 +490,7 @@ class App:
 
         # ---------- 中央：手柄图 + 右侧状态 ----------
         row = tk.Frame(main, bg=C_BG)
-        row.pack(fill="x", padx=18, pady=14)
+        row.pack(fill="both", expand=True, padx=18, pady=14)
 
         lc = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
         lc.pack(side="left")
@@ -500,6 +505,43 @@ class App:
         self.canvas.pack(padx=8, pady=(2, 10))
         self.pad_view = PadView(self.canvas)
         self.pad_view.bind_click(self.rebind)
+
+        # ---- 手柄图跟着窗口缩放 ----
+        # PadView.draw() 内部按画布实际尺寸等比缩放居中，所以只要算出画布该多大。
+        # 尺寸量化到 40px 一档：拖动窗口时不会每个像素都重合成一套贴图
+        self._pad_sz = (480, 474)
+        self._pad_job = None
+
+        def _pad_fit(e=None):
+            try:
+                rw, rh = row.winfo_width(), row.winfo_height()
+            except Exception:
+                return
+            if rw < 60 or rh < 60:
+                return
+            avail_w = rw - 340 - 16          # 右栏至少留 340
+            avail_h = rh - 84                # 上面标题行 + 内边距 + 余量
+            bw = max(280, min(avail_w, 760))
+            bh = max(280, min(avail_h, 900))
+            if bw / bh > 480 / 474:
+                bw = int(bh * 480 / 474)
+            else:
+                bh = int(bw * 474 / 480)
+            bw = max(200, bw // 40 * 40)
+            bh = int(bw * 474 / 480)
+            if (bw, bh) == self._pad_sz:
+                return
+            self._pad_sz = (bw, bh)
+            self.canvas.configure(width=bw, height=bh)
+            self.pad_view.draw()
+
+        def _pad_fit_debounced(e=None):
+            if self._pad_job:
+                self.root.after_cancel(self._pad_job)
+            self._pad_job = self.root.after(120, _pad_fit)
+
+        row.bind("<Configure>", _pad_fit_debounced)
+        self.root.after(200, _pad_fit)
 
         # 右栏内容多（四马达那堆控件），窗口高度装不下 → 做成滚动容器，
         # 鼠标放右栏上滚轮滚，滚到头不影响别处
@@ -1456,7 +1498,11 @@ class App:
                 info = betop.battery_info()
             except Exception:
                 info = None
-            self.root.after(0, lambda: self._show_batt(info))
+            try:
+                # 窗口已关时 mainloop 已退出，after 会炸 —— 静默即可
+                self.root.after(0, lambda: self._show_batt(info))
+            except RuntimeError:
+                pass
         threading.Thread(target=work, daemon=True).start()
 
     def _show_batt(self, info):
