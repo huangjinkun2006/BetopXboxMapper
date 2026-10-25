@@ -214,14 +214,27 @@ class RawHid:
         self.out_len = 0        # 0 = 这个接口不支持输出报告
         self.path = None
         self.preparsed = None
+        self.exclusive = False
 
-    def open_path(self, path):
+    def open_path(self, path, exclusive=False):
+        """打开 HID 接口。
+
+        exclusive=True 时 share 模式传 0（不共享）：这样别的进程（游戏 /
+        DirectInput / Steam）再 CreateFile 这个接口就会拿到 ERROR_SHARING_VIOLATION，
+        于是枚举不到这把物理手柄 —— 就是「屏蔽物理手柄」的实现原理。
+        代价：如果游戏先开并已占用，我们这边反而打不开（会抛 32 号错误）。
+        """
+        share = 0 if exclusive else (FILE_SHARE_READ | FILE_SHARE_WRITE)
         self.h = k32.CreateFileW(
-            path, GENERIC_READ | GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING,
+            path, GENERIC_READ | GENERIC_WRITE, share, None, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED, None)
         if self.h == INVALID_HANDLE_VALUE:
-            raise OSError(f"打不开 {path}  (err={k32.GetLastError()})")
+            err = k32.GetLastError()
+            if err == 32:      # ERROR_SHARING_VIOLATION
+                raise OSError("手柄正被别的程序占着（游戏 / Steam / 手柄测试页面），"
+                              "先关掉它们再开「屏蔽」")
+            raise OSError(f"打不开 {path}  (err={err})")
+        self.exclusive = bool(exclusive)
         self.path = path
         pp = c_void_p()
         if hid_dll.HidD_GetPreparsedData(self.h, byref(pp)):

@@ -67,6 +67,7 @@ class App:
         self.dev = None
         self.pad = None
         self.running = False
+        self.loop_th = None       # 读手柄的线程（切换屏蔽时要等它收尾）
         self.stop = threading.Event()
         self.state = {"buttons": {}, "axes": {k: 0.0 for k in betop.AXIS_TARGETS}}
         self.rebind_target = None
@@ -357,6 +358,13 @@ class App:
                                  padx=22, pady=6, cursor="hand2",
                                  command=self.toggle)
         self.btn_run.pack(side="right")
+        # 屏蔽物理手柄：独占打开 HID 接口，游戏就枚举不到这把北通了，
+        # 屏幕上只剩虚拟 Xbox 那一把（原神不然会显示两个手柄）
+        self.btn_hide = tk.Button(inner, text="屏蔽物理手柄", font=(FONT, 9),
+                                  relief="flat", padx=10, pady=6,
+                                  cursor="hand2", command=self.toggle_hide)
+        self.btn_hide.pack(side="right", padx=(0, 10))
+        self._refresh_hide_btn()
 
         # ---------- 中央：手柄图 + 右侧状态 ----------
         row = tk.Frame(main, bg=C_BG)
@@ -383,6 +391,11 @@ class App:
         self.dev_lbl = tk.Label(rc, text="北通 BTP-V1T\n先游定制版", font=(FONT, 9),
                                 fg=C_TEXT, bg=C_CARD, justify="left")
         self.dev_lbl.pack(anchor="w", padx=14)
+        tk.Label(rc, text="游戏里出现两个手柄？点上面「屏蔽物理手柄」，\n"
+                         "让游戏只看到虚拟 Xbox 那一把。\n"
+                         "（要在进游戏之前点，游戏先占上就挡不住了）",
+                 font=(FONT, 8), fg=C_SUB, bg=C_CARD,
+                 justify="left").pack(anchor="w", padx=14, pady=(4, 0))
         self.mode_lbl = tk.Label(rc, text="解码：未连接", font=(FONT, 8), fg=C_SUB,
                                  bg=C_CARD)
         self.mode_lbl.pack(anchor="w", padx=14, pady=(2, 8))
@@ -529,20 +542,35 @@ class App:
     # ------------------------------------------------------------ 控制
     def toggle(self):
         if self.running:
-            self.stop.set()
-            self.running = False
-            self.fun_stop.set()          # 娱乐模式一起停
-            self._close_rumble()
-            self.btn_run.config(text="启动映射", bg=C_RED)
-            self.status.set("已停止")
-            self._refresh_status()
-            return
+            self.stop_mapping()
+        else:
+            self.start_mapping()
+
+    def stop_mapping(self):
+        self.stop.set()
+        self.running = False
+        self.fun_stop.set()          # 娱乐模式一起停
+        self._close_rumble()
+        th = getattr(self, "loop_th", None)
+        if th is not None and th.is_alive():
+            th.join(timeout=1.5)     # 等 loop 收尾把句柄关掉，不然重开时会撞
+        self.dev = None
+        self.pad = None
+        self.btn_run.config(text="启动映射", bg=C_RED)
+        self.status.set("已停止")
+        self._refresh_status()
+
+    def start_mapping(self, quiet=False):
+        """开映射（独占与否看 km["exclusive"]）。返回 True/False"""
         try:
-            self.dev = betop.open_device()
+            self.dev = betop.open_device(
+                exclusive=bool(self.km.get("exclusive")))
             self.pad = betop.VirtualPad(rumble_callback=self.on_rumble)
         except Exception as e:
-            messagebox.showerror("启动失败", f"{e}\n\n确认 ViGEmBus 驱动装好了没")
-            return
+            if not quiet:
+                messagebox.showerror("启动失败",
+                                     f"{e}\n\n确认 ViGEmBus 驱动装好了没")
+            return False
         # 震动通道单独开（游戏接口没有输出报告），开不了也只是没震，不影响映射
         try:
             self.rumble = betop.Rumble(fmt=self._fmt_index(),
@@ -558,10 +586,45 @@ class App:
         self.running = True
         self.btn_run.config(text="停止映射", bg="#5a5e66")
         be = "HidP 精确解码" if self.dev.use_hidp else "字节兜底"
-        self.status.set(f"运行中（{be}）— 去开基岩版 MC")
+        hid = " · 物理手柄已屏蔽" if self.km.get("exclusive") else ""
+        self.status.set(f"运行中（{be}{hid}）— 去开基岩版 MC")
         self.mode_lbl.config(text="解码：" + be)
         self._refresh_status()
-        threading.Thread(target=self.loop, daemon=True).start()
+        self.loop_th = threading.Thread(target=self.loop, daemon=True)
+        self.loop_th.start()
+        return True
+
+    # ------------------------------------------------------- 屏蔽物理手柄
+    def _refresh_hide_btn(self):
+        on = bool(self.km.get("exclusive"))
+        self.btn_hide.config(text="物理手柄已屏蔽" if on else "屏蔽物理手柄",
+                             bg=("#e6f4ea" if on else "#f0f1f4"),
+                             fg=("#1e7e34" if on else C_TEXT))
+
+    def toggle_hide(self):
+        old = bool(self.km.get("exclusive"))
+        want = not old
+        self.km["exclusive"] = want
+        if self.running:
+            self.stop_mapping()
+            if not self.start_mapping(quiet=True):
+                # 打不开（多半是游戏已经占着手柄），把开关退回去
+                self.km["exclusive"] = old
+                self._refresh_hide_btn()
+                messagebox.showerror(
+                    "屏蔽失败",
+                    "手柄正被别的程序占着，挡不住它。\n\n"
+                    "常见原因：游戏 / Steam / 手柄测试页面已经先开着手柄了。\n"
+                    "先把它们全关掉，再点「屏蔽物理手柄」，\n"
+                    "最后才启动游戏 —— 顺序反了就挡不住。")
+                return
+        betop.save_keymap(self.km)      # 记住这个选择，下次开自动带上
+        self._refresh_hide_btn()
+        if want:
+            self.status.set("物理手柄已屏蔽 — 游戏里只剩虚拟 Xbox 那把")
+        else:
+            self.status.set("物理手柄恢复可见（游戏里会有两把）")
+        self._refresh_status()
 
     # ------------------------------------------------------------ 震动
     def _fmt_index(self):

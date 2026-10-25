@@ -1,5 +1,6 @@
 {
   "_说明": "buttons 里的数字是 HID usage（按钮页 0x09），来自 SDL 官方映射串并已实测核对。axes 由 usage 定位，别改 usage；invert=true 反向。",
+  "exclusive": false,
   "report_len": 11,
   "deadzone": 0.12,
   "trigger_deadzone": 0.03,

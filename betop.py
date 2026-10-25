@@ -59,6 +59,10 @@ def default_keymap():
     return {
         "_说明": "buttons 里的数字是 HID usage（按钮页 0x09），来自 SDL 官方映射串"
                  "并已实测核对。axes 由 usage 定位，别改 usage；invert=true 反向。",
+        # 独占打开手柄接口：开了以后游戏 / DirectInput 就枚举不到物理手柄了，
+        # 屏幕上只剩虚拟 Xbox 那一把（原神这类游戏不然会显示两个手柄）。
+        # 必须在游戏之前开 —— 游戏先占上手柄的话这里会打不开。
+        "exclusive": False,
         "report_len": 11,
         "deadzone": 0.12,
         "trigger_deadzone": 0.03,
@@ -116,6 +120,7 @@ def load_keymap():
     # 顺手把记成 12 的 GUIDE 纠正成 105。
     km.get("buttons", {}).pop("FN", None)
     km.pop("fn_out", None)
+    km.setdefault("exclusive", False)
     km.setdefault("buttons", {})
     # 老配置把中央三键记反过（BACK=16 / START=11 / GUIDE=12），这里纠正成
     # 现在的定案值；LOGO 写成 12 或 16 的也统一改成 105
@@ -140,12 +145,12 @@ class HidPad:
         self.in_len = 11
         self.use_hidp = False
 
-    def open(self):
+    def open(self, exclusive=False):
         # 不锁死 PID：切模式或换连接方式 PID 可能变，只要是北通(20BC)就认
         path, in_len = hidraw.find_gamepad(VID, None)
         if path is None:
             raise RuntimeError("没找到北通手柄（VID 20BC），检查有线/蓝牙是否连上")
-        self.dev = hidraw.RawHid().open_path(path)
+        self.dev = hidraw.RawHid().open_path(path, exclusive=exclusive)
         self.in_len = in_len or 11
         self.use_hidp = bool(self.dev.preparsed)
         return self
@@ -170,11 +175,11 @@ class HidPad:
             self.dev.close()
 
 
-def open_device(wait=False, timeout=180):
+def open_device(wait=False, timeout=180, exclusive=False):
     t0 = time.time()
     while True:
         try:
-            return HidPad().open()
+            return HidPad().open(exclusive=exclusive)
         except Exception as e:
             if not wait or (time.time() - t0) > timeout:
                 raise
