@@ -546,7 +546,8 @@ class App:
         # 右栏内容多（四马达那堆控件），窗口高度装不下 → 做成滚动容器，
         # 鼠标放右栏上滚轮滚，滚到头不影响别处
         rc_wrap = tk.Frame(row, bg=C_BG)
-        rc_wrap.pack(side="left", fill="both", padx=(10, 6), ipadx=2)
+        # expand=True：窗口拉宽后右栏跟着铺满，不然右边一大片空白
+        rc_wrap.pack(side="left", fill="both", expand=True, padx=(10, 6), ipadx=2)
         rc_cv = tk.Canvas(rc_wrap, bg=C_BG, highlightthickness=0)
         rc_sb = tk.Scrollbar(rc_wrap, orient="vertical", command=rc_cv.yview)
         rc_cv.configure(yscrollcommand=rc_sb.set)
@@ -567,8 +568,12 @@ class App:
 
         def _rc_on_cfg(_e):
             rc_cv.configure(scrollregion=rc_cv.bbox("all"))
-            rc_cv.itemconfigure(rc_win, width=rc_cv.winfo_width() -
-                                rc_sb.winfo_width() - 28)
+            avail = rc_cv.winfo_width() - rc_sb.winfo_width() - 28
+            # 内容最宽 640：窗口特别宽时列表按钮不至于拉得稀稀拉拉，居中放
+            w = min(avail, 640)
+            rc_cv.itemconfigure(rc_win, width=w)
+            rc_cv.coords(rc_win, max(14, (rc_cv.winfo_width() -
+                                          rc_sb.winfo_width() - w) // 2), 14)
             _rc_round()
 
         rc.bind("<Configure>", _rc_on_cfg)

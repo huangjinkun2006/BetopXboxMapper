@@ -156,7 +156,7 @@ class Wizard:
 
         # 右：提示 / 进度 / 日志
         rc_card = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=6)
-        rc_card.pack(side="left", fill="both", padx=(10, 0))
+        rc_card.pack(side="left", fill="both", expand=True, padx=(10, 0))
         rc = rc_card.body
         tk.Label(rc, textvariable=self.prog, font=(FONT, 9), fg=C_SUB,
                  bg=C_CARD).pack(anchor="w", padx=18, pady=(14, 2))
