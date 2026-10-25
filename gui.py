@@ -203,6 +203,67 @@ class App:
         else:
             self.quit_app()
 
+    # ------------------------------------------------------------ 界面大小
+    def _on_ui_scale_drag(self, _v=None):
+        """拖动中：只更新百分比标签"""
+        try:
+            v = int(self.ui_scale.get())
+            auto = int(round(padui.DPI / 96.0 * 100))
+            self.ui_scale_lbl.config(
+                text="%d%%%s" % (v, "（自动）" if v == auto else ""))
+        except Exception:
+            pass
+
+    def _on_ui_scale_done(self, _e=None):
+        """松手：存键位文件，提示重启生效"""
+        try:
+            v = int(self.ui_scale.get())
+        except Exception:
+            return
+        auto = int(round(padui.DPI / 96.0 * 100))
+        # 等于自动值就不落盘，跟着系统 DPI 走
+        if v == auto:
+            self.km.pop("ui_scale", None)
+        else:
+            self.km["ui_scale"] = round(v / (padui.DPI / 96.0) / 100.0, 4)
+        try:
+            betop.save_keymap(self.km)
+        except Exception:
+            pass
+        try:
+            self.ui_scale_hint.config(text="已保存，重启后生效")
+        except Exception:
+            pass
+
+    def _restart_app(self):
+        """重启自己：先存滑块值，干净退出（释放单实例互斥），再拉新进程。
+        顺序不能反——先起新进程的话，它检查互斥时旧进程还活着，
+        会被当成"已运行"直接激活旧窗口然后退出，两边都没了。"""
+        self._on_ui_scale_done()
+        try:
+            import subprocess
+            if getattr(sys, "frozen", False):
+                new = [sys.executable]
+            else:
+                new = [sys.executable, os.path.abspath(__file__)]
+        except Exception:
+            return
+        self.quit_app()               # 停震动/闹钟/托盘，释放互斥
+        # 等旧窗口真的销毁（互斥随进程退出释放）再拉新的，最多等 2 秒
+        for _ in range(20):
+            try:
+                if not self.root.winfo_exists():
+                    break
+            except Exception:
+                break
+            time.sleep(0.1)
+        time.sleep(0.2)
+        try:
+            subprocess.Popen(new)
+        except Exception:
+            pass
+        sys.exit(0)
+
     def quit_app(self):
         """真正退出：停映射、停震动、撤托盘"""
         try:
@@ -440,6 +501,32 @@ class App:
         nav_item("📱 手机通知", self.open_notify)
         nav_item("📖 使用说明", self.show_help)
         nav_item("💾 保存键位", self.save)
+        # 界面大小：滑块 80%~200%，松手保存，重启生效
+        nav_header("界面大小")
+        _auto_pct = int(round(padui.DPI / 96.0 * 100))
+        _cur = self.km.get("ui_scale")
+        _cur_pct = int(round(_cur * padui.DPI / 96.0 * 100)) if _cur else _auto_pct
+        self.ui_scale_lbl = tk.Label(
+            sb, text="%d%%%s" % (_cur_pct, "（自动）" if not _cur else ""),
+            font=FT(8), fg=C_SUB, bg=C_CARD)
+        self.ui_scale_lbl.pack(fill="x", padx=S(20))
+        self.ui_scale = tk.IntVar(value=_cur_pct)
+        sc = tk.Scale(sb, from_=80, to=200, orient="horizontal",
+                      variable=self.ui_scale, resolution=5,
+                      font=FT(8), fg=C_SUB, bg=C_CARD, troughcolor="#e3e5ea",
+                      highlightthickness=0, sliderrelief="flat",
+                      length=S(110), command=self._on_ui_scale_drag)
+        sc.pack(fill="x", padx=S(20))
+        sc.bind("<ButtonRelease-1>", self._on_ui_scale_done)
+        self.ui_scale_hint = tk.Label(
+            sb, text="", font=FT(7), fg=C_ACC, bg=C_CARD, anchor="w")
+        self.ui_scale_hint.pack(fill="x", padx=S(20), pady=(S(2), S(0)))
+        self.ui_btn = tk.Button(
+            sb, text="↻ 重启生效", font=FT(8), fg=C_TEXT, bg="#f0f1f4",
+            relief="flat", padx=S(8), pady=S(3), cursor="hand2",
+            command=self._restart_app)
+        self.ui_btn.pack(fill="x", padx=S(20), pady=(S(4), S(0)))
+
         nav_header("关于")
         nav_item("🔄 检查更新", self.open_update)
 
@@ -2013,10 +2100,17 @@ def _single_instance():
             return
         hwnd = ctypes.windll.user32.FindWindowW(None,
                                                "北通游戏厅 · 手柄映射器")
+        if not hwnd:
+            # 窗口可能刚在销毁/最小化中，再找一次；还找不到就放行——
+            # 免得留下一个只占互斥没有界面的僵尸进程，用户再也打不开
+            time.sleep(1.0)
+            hwnd = ctypes.windll.user32.FindWindowW(
+                None, "北通游戏厅 · 手柄映射器")
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd, 9)       # SW_RESTORE
             ctypes.windll.user32.SetForegroundWindow(hwnd)
-        sys.exit(0)
+            sys.exit(0)
+        # 找不到窗口：放行，让新的起来（旧的残留自生自灭）
     except SystemExit:
         raise
     except Exception:
@@ -2028,6 +2122,13 @@ def main():
     # 150% 缩放的屏上字只有正常 2/3 大（padui 导入时也设过一次，这里双保险）
     try:
         padui.enable_dpi()
+    except Exception:
+        pass
+    # 用户手动界面大小（倍率，0/缺省=跟随系统 DPI），键位文件里存着
+    try:
+        _mult = betop.load_keymap().get("ui_scale")
+        if _mult:
+            padui.apply_user_scale(_mult)
     except Exception:
         pass
     _single_instance()

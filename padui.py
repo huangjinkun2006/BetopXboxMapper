@@ -84,6 +84,21 @@ elif SCALE > 3.0:
     SCALE = 3.0
 
 
+def apply_user_scale(mult):
+    """用户手动界面缩放（倍率，None/<=0 = 跟随系统 DPI）。
+    必须在建窗口前调用；FT()/S() 调用时才读 SCALE，所以随时改都生效。"""
+    global SCALE
+    base = DPI / 96.0
+    if base < 1.0:
+        base = 1.0
+    elif base > 3.0:
+        base = 3.0
+    if mult and float(mult) > 0:
+        SCALE = base * float(mult)
+    else:
+        SCALE = base
+
+
 def FT(size, weight="normal", family=None):
     """按系统 DPI 缩放的字体。size 按 96 DPI 下的磅值写，出来自动换算。"""
     return (family or FONT, max(6, int(round(size * SCALE))), weight)

@@ -450,6 +450,13 @@ def main():
         padui.enable_dpi()
     except Exception:
         pass
+    # 跟主界面一样的用户界面大小设置
+    try:
+        _mult = betop.load_keymap().get("ui_scale")
+        if _mult:
+            padui.apply_user_scale(_mult)
+    except Exception:
+        pass
     root = tk.Tk()
     Wizard(root)
     root.mainloop()
