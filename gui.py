@@ -489,7 +489,7 @@ class App:
                  bg=C_CARD).pack(side="left")
         tk.Label(hdr, text="按下会亮绿 · 点任意键可重新绑定", font=(FONT, 8),
                  fg=C_SUB, bg=C_CARD).pack(side="left", padx=8)
-        self.canvas = tk.Canvas(lc, width=480, height=432, bg=C_CARD,
+        self.canvas = tk.Canvas(lc, width=480, height=510, bg=C_CARD,
                                 highlightthickness=0)
         self.canvas.pack(padx=8, pady=(2, 10))
         self.pad_view = PadView(self.canvas)
