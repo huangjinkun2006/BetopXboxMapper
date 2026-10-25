@@ -483,7 +483,11 @@ class Lab(tk.Toplevel):
 
     @staticmethod
     def _to_spec(pairs):
-        """把一条候选命令翻译成主程序认得的 rumble_custom"""
+        """把一条候选命令翻译成主程序认得的 rumble_custom。
+
+        motor 用「马达名 -> 字节偏移」的字典（左柄/右柄/左扳机/右扳机），
+        拉满的那几个字节按顺序认成 big、small、tl、tr。
+        """
         fixed, motor = [], []
         for off, val in pairs:
             if off == 1:                 # 命令头固定不变
@@ -492,7 +496,14 @@ class Lab(tk.Toplevel):
                 motor.append(off)
             else:
                 fixed.append((off, val))
-        return {"chan": "write", "fixed": fixed, "motor": motor or [3]}
+        keys = ("big", "small", "tl", "tr")
+        md = {}
+        for i, off in enumerate(motor):
+            if i < len(keys):
+                md[keys[i]] = off
+        if not md:
+            md = {"big": 3, "small": 4}
+        return {"chan": "write", "fixed": fixed, "motor": md}
 
     def _end_duel(self):
         self._duel_btns(False)

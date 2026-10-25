@@ -360,7 +360,7 @@ class App:
                                  padx=22, pady=6, cursor="hand2",
                                  command=self.toggle)
         self.btn_run.pack(side="right")
-        # 屏蔽物理手柄：走 HidHide 内核过滤驱动（v1.0.12 起替换独占方案，
+        # 屏蔽物理手柄：走 HidHide 内核过滤驱动（v1.0.13 起替换独占方案，
         # 独占打不过 XboxService / dwm 这些常年持有手柄句柄的系统组件）
         self.btn_hide = tk.Button(inner, text="屏蔽物理手柄", font=(FONT, 9),
                                   relief="flat", padx=10, pady=6,
@@ -470,6 +470,45 @@ class App:
         self.rumble_lbl = tk.Label(tb, text="", font=(FONT, 8), fg=C_SUB,
                                    bg=C_CARD, wraplength=150, justify="left")
         self.rumble_lbl.pack(side="left", padx=8)
+        # ---- 四个马达单独测（左柄/右柄/左扳机/右扳机）----
+        mt = tk.Frame(rc, bg=C_CARD)
+        mt.pack(fill="x", padx=14, pady=(0, 2))
+        tk.Label(mt, text="单马达", font=(FONT, 8), fg=C_SUB,
+                 bg=C_CARD).pack(side="left")
+        self.motor_btns = {}
+        for key, name in (("big", "左柄"), ("small", "右柄"),
+                          ("tl", "左扳机"), ("tr", "右扳机")):
+            b = tk.Button(mt, text=name, font=(FONT, 8), bg="#f0f1f4",
+                          fg=C_TEXT, relief="flat", padx=6, pady=2,
+                          cursor="hand2",
+                          command=lambda k=key: self.test_motor(k))
+            b.pack(side="left", padx=2)
+            self.motor_btns[key] = b
+        self.btn_scan = tk.Button(mt, text="扫命令", font=(FONT, 8),
+                                  fg="#1e7e34", bg="#e6f4ea", relief="flat",
+                                  padx=6, pady=2, cursor="hand2",
+                                  command=self.open_motor_scan)
+        self.btn_scan.pack(side="left", padx=4)
+        tk.Button(mt, text="重置", font=(FONT, 8), fg=C_SUB,
+                  bg="#f0f1f4", relief="flat", padx=6, pady=2, cursor="hand2",
+                  command=self.reset_rumble).pack(side="left")
+        # 合并模式：反正都是震动，四个马达共用一条命令一起震
+        self.rm_merge = tk.BooleanVar(
+            value=bool(self.km.get("rumble_merge", True)))
+        tk.Checkbutton(rc, text="四个马达合并成一个震动（不分左右 / 扳机）",
+                       variable=self.rm_merge, font=(FONT, 8), fg=C_TEXT,
+                       bg=C_CARD, activebackground=C_CARD, selectcolor="#eaf5ea",
+                       command=self.on_merge).pack(anchor="w", padx=12)
+        # 游戏只发两大马达信号，扳机要震只能跟着手柄马达走
+        self.trig_follow = tk.BooleanVar(
+            value=bool(self.km.get("trig_follow", False)))
+        self.cb_trig = tk.Checkbutton(
+            rc, text="扳机马达跟着手柄一起震（游戏信号里没有扳机）",
+            variable=self.trig_follow, font=(FONT, 8), fg=C_SUB,
+            bg=C_CARD, activebackground=C_CARD, selectcolor="#eaf5ea",
+            command=self.on_trig_follow)
+        self.cb_trig.pack(anchor="w", padx=12)
+        self._refresh_motor_btns()
         # 诊断：游戏到底有没有把震动发过来
         self.dbg_lbl = tk.Label(rc, text="还没收到游戏的震动指令",
                                 font=("Consolas", 8), fg="#a0a4ad",
@@ -556,7 +595,9 @@ class App:
         th = getattr(self, "loop_th", None)
         if th is not None and th.is_alive():
             th.join(timeout=1.5)     # 等 loop 收尾把句柄关掉，不然重开时会撞
-        self.dev = None
+        # 屏蔽开着时留着 dev：句柄一放，重开就得赌白名单生效
+        if not self.km.get("shield"):
+            self.dev = None
         self.pad = None
         self.btn_run.config(text="启动映射", bg=C_RED)
         self.status.set("已停止")
@@ -565,7 +606,9 @@ class App:
     def start_mapping(self, quiet=False):
         """开映射。返回 True/False"""
         try:
-            self.dev = betop.open_device()
+            # 已经握着句柄（比如先点了屏蔽）就直接用，别重复开
+            if self.dev is None:
+                self.dev = betop.open_device()
             self.pad = betop.VirtualPad(rumble_callback=self.on_rumble)
         except Exception as e:
             # 半途失败要把已经打开的手柄句柄关掉，不然泄漏一个独占路障
@@ -581,15 +624,14 @@ class App:
             return False
         # 震动通道单独开（游戏接口没有输出报告），开不了也只是没震，不影响映射
         try:
-            self.rumble = betop.Rumble(fmt=self._fmt_index(),
-                                       enabled=bool(self.rumble_on.get()),
-                                       custom=self.km.get("rumble_custom")).open()
+            self.rumble = betop.Rumble(**self._rumble_kw()).open()
             self.rumble_lbl.config(text="震动通道已开")
         except Exception as e:
             self.rumble = None
             self.rumble_lbl.config(text=f"震动通道开不了：{e}")
             self.dbg_lbl.config(text="震动通道开不了，游戏震动转不出去",
                                 fg="#c0392b")
+        self._sync_shield()
         self.stop.clear()
         self.running = True
         self.btn_run.config(text="停止映射", bg="#5a5e66")
@@ -603,15 +645,30 @@ class App:
         return True
 
     # ------------------------------------------------------- 屏蔽物理手柄
+    def _shield_insts(self):
+        """要操作的设备实例：当下枚举到的 ∪ 上次屏蔽时记下来的。
+
+        记历史这一步很关键 —— 手柄休眠/拔掉后枚举不到它，只靠实时枚举就
+        再也解除不了屏蔽了（按钮会一直显示"已屏蔽"且点不动）。
+        """
+        insts = []
+        try:
+            insts += hidhide.betop_instances(betop.VID)
+        except Exception:
+            pass
+        for i in (self.km.get("shield_insts") or []):
+            if i not in insts:
+                insts.append(i)
+        return insts
+
     def _shield_state(self):
         """以 HidHide 驱动里的实际名单为准"""
         if not hidhide.installed():
             return None
-        try:
-            path, _ = hidraw.find_gamepad(betop.VID, None)
-        except Exception:
+        insts = self._shield_insts()
+        if not insts:
             return None
-        return hidhide.is_shielded(hidhide.instance_path(path))
+        return any(hidhide.is_shielded(i) for i in insts)
 
     def _refresh_hide_btn(self):
         on = self._shield_state()
@@ -656,36 +713,80 @@ class App:
         messagebox.showinfo("装好了", "HidHide 已安装，现在帮你把物理手柄屏蔽掉。")
         return True
 
+    def _sync_shield(self):
+        """屏蔽开着时，把【当前】这把的实例补进黑名单。
+
+        HidHide 是按设备实例路径匹配的，而实例路径里带着 USB 口信息 ——
+        换个 USB 口插，路径就变了，老的黑名单条目立刻失效。所以每回开
+        映射（此时确定能读到手柄）都补一次，换口也不怕。
+        """
+        if not self.km.get("shield"):
+            return
+        if not hidhide.installed():
+            return
+        try:
+            insts = hidhide.betop_instances(betop.VID)
+        except Exception:
+            return
+        if not insts:
+            return
+        missing = [i for i in insts if not hidhide.is_shielded(i)]
+        if not missing:
+            self.km["shield_insts"] = insts
+            return
+        me = os.path.abspath(sys.argv[0])
+        apps = [a for a in (me, os.path.join(os.path.dirname(me),
+                                             "BetopWizard.exe"))
+                if os.path.isfile(a)]
+        hidhide.shield_on(missing, apps)
+        self.km["shield_insts"] = insts
+        betop.save_keymap(self.km)
+
     def toggle_hide(self):
         if not self._ensure_hidhide():
             return
-        try:
-            path, _ = hidraw.find_gamepad(betop.VID, None)
-        except Exception as e:
-            messagebox.showerror("屏蔽失败", f"没找到手柄：{e}")
+        # 先把手柄句柄攥在手里再隐藏：HidHide 不会收回已经打开的句柄，
+        # 所以哪怕白名单没生效（换机器 / 中文路径被 CLI 截断之类），
+        # 映射照样读得到物理手柄。这是屏蔽能稳稳管用的关键顺序。
+        if self.dev is None:
+            try:
+                self.dev = betop.open_device()
+            except Exception:
+                pass          # 读不到也别拦着，手柄离线时还要能解除屏蔽
+        insts = self._shield_insts()
+        if not insts:
+            messagebox.showerror("屏蔽失败",
+                                 "既没枚举到北通手柄，也没有历史记录可解除。\n"
+                                 "把手柄插上 / 按 LOGO 唤醒后再点一次。")
             return
-        inst = hidhide.instance_path(path)
-        want = not hidhide.is_shielded(inst)
-        me = os.path.abspath(sys.argv[0])
-        self.status.set("正在改 HidHide 黑名单（弹 UAC 请点「是」）……")
+        want = not any(hidhide.is_shielded(i) for i in insts)
+        self.status.set("正在改 HidHide 黑名单 ……")
         self._refresh_status()
         if want:
-            # 把映射器 / 向导都加进白名单，不然屏蔽后自己反倒读不到手柄
-            for exe in {me, os.path.join(os.path.dirname(me), "BetopWizard.exe")}:
-                if os.path.isfile(exe) and not hidhide.in_app_allowlist(exe):
-                    hidhide.app_add(exe)
-            ok = hidhide.hide_add(inst)
+            # 把映射器 / 向导都加进白名单，不然屏蔽后自己反倒读不到手柄；
+            # 白名单 + 藏设备 + 总开关串成一条 CLI 调用
+            me = os.path.abspath(sys.argv[0])
+            apps = {me, os.path.join(os.path.dirname(me), "BetopWizard.exe")}
+            ok = hidhide.shield_on(insts,
+                                   [a for a in apps if os.path.isfile(a)])
         else:
-            ok = hidhide.hide_rem(inst)
+            ok = hidhide.shield_off(insts)
         if not ok:
-            messagebox.showerror("屏蔽失败", "HidHide 命令没跑成（UAC 点了取消？）")
+            messagebox.showerror(
+                "屏蔽失败",
+                "HidHide 名单没改成（点了 UAC 取消？驱动没起来？）。\n\n"
+                "可以手动确认：\n"
+                r'C:\Program Files\Nefarius Software Solutions\HidHide\x64'
+                r'\HidHideCLI.exe --dev-list')
             self._refresh_hide_btn()
             return
-        self.km["shield"] = hidhide.is_shielded(inst)
+        self.km["shield_insts"] = insts
+        self.km["shield"] = any(hidhide.is_shielded(i) for i in insts)
         betop.save_keymap(self.km)
         self._refresh_hide_btn()
         if self.km["shield"]:
-            self.status.set("物理手柄已屏蔽 — 游戏里只剩虚拟 Xbox 那把")
+            self.status.set("物理手柄已屏蔽 — 游戏里只剩虚拟 Xbox 那把\n"
+                            "（映射器自己走了白名单，照读不误）")
         else:
             self.status.set("物理手柄恢复可见（游戏里会有两把）")
         self._refresh_status()
@@ -704,6 +805,132 @@ class App:
         if self.rumble is not None:
             self.rumble.enabled = self.km["rumble"]
             self.rumble.fmt = self.km["rumble_fmt"]
+            self.rumble.custom = self.km.get("rumble_custom")
+            self.rumble.custom_trig = self.km.get("rumble_custom_trig")
+            self.rumble.merge = bool(self.km.get("rumble_merge", True))
+            self.rumble._last = None       # 模板换过，别被去重挡住
+
+    # -------------------------------------------------- 四个马达各自配置
+    MOTOR_CN = {"big": "左柄（大马达）", "small": "右柄（小马达）",
+                "tl": "左扳机", "tr": "右扳机"}
+
+    def _rumble_kw(self):
+        """造 Rumble 的统一参数：手柄马达模板 + 扳机马达模板"""
+        return dict(fmt=self._fmt_index(),
+                    enabled=bool(self.rumble_on.get()),
+                    custom=self.km.get("rumble_custom"),
+                    custom_trig=self.km.get("rumble_custom_trig"),
+                    merge=bool(self.km.get("rumble_merge", True)))
+
+    def _motor_tpl_key(self, which):
+        return "rumble_custom_trig" if which in ("tl", "tr") \
+            else "rumble_custom"
+
+    def _has_motor(self, which):
+        """这个马达有没有命令可用（没扫出来的点上去只会白震）"""
+        if self.km.get("rumble_merge", True):
+            return True      # 合并模式：四个马达共用一条命令，都能震
+        tpl = self.km.get(self._motor_tpl_key(which))
+        if tpl is None:
+            # 没自定义模板时走下拉里的候选格式，左右两个槽都在
+            return which in ("big", "small")
+        return bool(betop._norm_motor(tpl.get("motor")).get(which))
+
+    def _refresh_motor_btns(self):
+        m = bool(self.km.get("rumble_merge", True))
+        for k, b in getattr(self, "motor_btns", {}).items():
+            ok = self._has_motor(k)
+            b.config(text=self.MOTOR_CN[k].split("（")[0] + ("" if ok else " ?"),
+                     bg="#e6f4ea" if ok else "#f0f1f4",
+                     fg="#1e7e34" if ok else "#a0a4ad")
+        # 合并模式下不用扫命令、也不用单独勾扳机跟随（本来就一起震）
+        if getattr(self, "btn_scan", None) is not None:
+            self.btn_scan.config(state="disabled" if m else "normal",
+                                 fg="#a0a4ad" if m else "#1e7e34")
+        if getattr(self, "cb_trig", None) is not None:
+            self.cb_trig.config(state="disabled" if m else "normal",
+                                fg="#c8ccd4" if m else C_SUB)
+
+    def on_merge(self):
+        self.km["rumble_merge"] = bool(self.rm_merge.get())
+        betop.save_keymap(self.km)
+        if self.rumble is not None:
+            self.rumble.merge = self.km["rumble_merge"]
+        self._refresh_motor_btns()
+
+    def on_trig_follow(self):
+        self.km["trig_follow"] = bool(self.trig_follow.get())
+        betop.save_keymap(self.km)
+
+    def test_motor(self, which):
+        """单独震一个马达 0.9 秒"""
+        if which in ("tl", "tr") and not self._has_motor(which):
+            if messagebox.askyesno(
+                    "扳机马达还没配命令",
+                    f"「{self.MOTOR_CN[which]}」的命令还没扫出来。\n\n"
+                    "协议没公开，得挨个试命令才能找出来 —— 现在去扫？\n"
+                    "（会一条条发，感觉到震就点「有感，就它了」）",
+                    parent=self.root):
+                self.open_motor_scan(which)
+            return
+        try:
+            r, own = self.rumble, False
+            if r is None or r.dev is None:
+                r = betop.Rumble(**self._rumble_kw()).open()
+                own = True
+        except Exception as e:
+            self.rumble_lbl.config(text=f"打不开：{e}")
+            return
+        merged = bool(self.km.get("rumble_merge", True))
+        self.rumble_lbl.config(
+            text=("四个马达一起震 0.9 秒…" if merged
+                  else f"{self.MOTOR_CN[which]} 震 0.9 秒…"))
+
+        def go():
+            err = None
+            try:
+                r.play_motor(which, 255, 0.9)
+            except Exception as e:
+                err = str(e)
+            if own:
+                try:
+                    r.stop_all()
+                    r.close()
+                except Exception:
+                    pass
+            if err:
+                self.root.after(0, lambda: self.rumble_lbl.config(text=err))
+
+        threading.Thread(target=go, daemon=True).start()
+
+    def reset_rumble(self):
+        """扫错了 / 震动全废时的救命按钮：回到已验证能震的那条命令"""
+        if not messagebox.askyesno(
+                "重置震动命令",
+                "恢复成已经验证能震的那条：\n"
+                "  WriteFile · 命令头 0x08 · 大马达第 3 字节、小马达第 4 字节\n\n"
+                "（你扫出来的配置会丢掉，确定吗？）", parent=self.root):
+            return
+        self.km["rumble_fmt"] = 28
+        self.km["rumble_custom"] = {"chan": "write", "fixed": [[1, 8]],
+                                    "motor": {"big": 3, "small": 4}}
+        self.km.pop("rumble_custom_trig", None)
+        betop.save_keymap(self.km)
+        if self.rumble is not None:
+            self.rumble.fmt = 28
+            self.rumble.custom = self.km.get("rumble_custom")
+            self.rumble.custom_trig = None
+            self.rumble._last = None
+        self.rumble_fmt.set(betop.RUMBLE_FORMATS[28][0])
+        self._refresh_motor_btns()
+        self.rumble_lbl.config(text="已恢复默认震动命令，点「试震一下」看看")
+
+    def open_motor_scan(self, which=None):
+        """扫未知马达的命令（右柄 / 扳机）"""
+        try:
+            MotorScan(self.root, self, which or "small")
+        except Exception as e:
+            messagebox.showerror("扫不了", str(e), parent=self.root)
 
     def on_gain(self):
         g = max(0.05, min(3.0, self.rumble_gain.get()))
@@ -717,7 +944,14 @@ class App:
         """ViGEm 告诉我们游戏想让手柄震多大 -> 乘上强度滑块 -> 转发"""
         if self.rumble is not None:
             g = self._gain()
-            self.rumble.set(min(255, int(big * g)), min(255, int(small * g)))
+            b, s = min(255, int(big * g)), min(255, int(small * g))
+            # XInput 只有两大马达信号，扳机要震就只能跟着走；
+            # 合并模式下本来就四个一起，直接给上
+            if self.km.get("trig_follow") or self.km.get("rumble_merge", True):
+                tl, tr = b, s
+            else:
+                tl = tr = 0
+            self.rumble.set(b, s, tl, tr)
         self._dbg = (int(big), int(small), self.rumble is not None)
         now = time.time()
         if now - getattr(self, "_dbg_t", 0) > 0.12:   # 别把 UI 队列刷爆
@@ -797,7 +1031,7 @@ class App:
         own = False
         if rm is None or rm.dev is None:
             try:
-                rm = betop.Rumble(custom=self.km.get("rumble_custom")).open()
+                rm = betop.Rumble(**self._rumble_kw()).open()
                 own = True
             except Exception as e:
                 self.rumble_lbl.config(text=f"打不开：{e}")
@@ -814,18 +1048,23 @@ class App:
     def test_rumble(self):
         """不启动映射也能量：单独开私有通道震三下"""
         try:
-            r = betop.Rumble(fmt=self._fmt_index(),
-                          custom=self.km.get("rumble_custom")).open()
+            r = betop.Rumble(**self._rumble_kw()).open()
         except Exception as e:
             self.rumble_lbl.config(text=f"打不开：{e}")
             return
-        self.rumble_lbl.config(text="连震三下…")
+        merged = bool(self.km.get("rumble_merge", True))
+        self.rumble_lbl.config(text="震两下…" if merged else "连震三下…")
 
         def go():
             try:
                 g = self._gain()
-                # 先单独大马达、再单独小马达、最后两个一起，好分辨哪个在响
-                seq = [(255, 0), (0, 0), (0, 255), (0, 0), (255, 255), (0, 0)]
+                if merged:
+                    # 合并模式下四个马达一起，单独试大/小没意义
+                    seq = [(255, 255), (0, 0), (255, 255), (0, 0)]
+                else:
+                    # 先单独大马达、再单独小马达、最后两个一起，好分辨哪个在响
+                    seq = [(255, 0), (0, 0), (0, 255), (0, 0),
+                           (255, 255), (0, 0)]
                 for a, b in seq:
                     r.set(min(255, int(a * g)), min(255, int(b * g)))
                     time.sleep(0.7)
@@ -841,8 +1080,7 @@ class App:
         rm, own = self.rumble, False
         if rm is None or rm.dev is None:
             try:
-                rm = betop.Rumble(fmt=self._fmt_index(),
-                           custom=self.km.get("rumble_custom")).open()
+                rm = betop.Rumble(**self._rumble_kw()).open()
                 own = True
             except Exception as e:
                 self.rumble_lbl.config(text=f"打不开：{e}")
@@ -893,7 +1131,7 @@ class App:
         rm, own = self.rumble, False
         if rm is None or rm.dev is None:
             try:
-                rm = betop.Rumble(custom=self.km.get("rumble_custom")).open()
+                rm = betop.Rumble(**self._rumble_kw()).open()
                 own = True
             except Exception as e:
                 messagebox.showerror("扫不了", f"{e}")
@@ -1023,7 +1261,9 @@ class App:
         try:
             if self.pad:
                 self.pad.reset()
-            if self.dev:
+            # 屏蔽开着就别松手：句柄一放，能不能再开回来就得看白名单脸色，
+            # 握着它才是稳的（HidHide 不会收回已打开的句柄）
+            if self.dev and not self.km.get("shield"):
                 self.dev.close()
         except Exception:
             pass
@@ -1164,6 +1404,349 @@ class App:
             subprocess.Popen([sys.executable, os.path.join(HERE, "wizard.py")],
                              creationflags=flags)
         messagebox.showinfo("向导", "已在新窗口打开识别向导，跟着提示按键即可")
+
+
+class MotorScan:
+    """给还没找出命令的马达（右柄 / 扳机）扫命令。
+
+    协议是厂商私有的，没得抓包只能穷举：命令头字节 × 强度字节位置，
+    一条条发 0.9 秒，用户感觉到目标马达在震就点「有感」，存进 keymap。
+    """
+
+    # 0x08 是已经验证能把左柄大马达震起来的命令头，放最前面先试
+    HEADS = [0x08, 0x00, 0x01, 0x02, 0x04, 0x0B, 0x10, 0x11, 0x12, 0x20,
+             0x40, 0x55]
+    OFFS = [3, 4, 5, 6, 7, 8]
+    TRY_SEC = 0.9
+    MOTORS = (("big", "左柄（大马达）"), ("small", "右柄（小马达）"),
+              ("tl", "左扳机"), ("tr", "右扳机"))
+
+    def __init__(self, parent, app, which="small"):
+        self.app = app
+        self.which = tk.StringVar(value=which)
+        self.rm = betop.Rumble(**app._rumble_kw()).open()
+        self.chan_mode = tk.StringVar(value="write")
+        self.stop_ev = threading.Event()
+        self.got_ev = threading.Event()
+        self.skip_ev = threading.Event()
+        self.cur = None          # (chan, head, off, 序号)
+        self._undo = None        # (keymap键, 保存前的模板)
+        self.th = None
+
+        w = tk.Toplevel(parent)
+        self.win = w
+        w.title("扫马达命令")
+        w.geometry("430x300")
+        w.configure(bg=C_BG)
+        w.transient(parent)
+        tk.Label(w, text="扫马达命令", font=(FONT, 12, "bold"), fg=C_TEXT,
+                 bg=C_BG).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(w, text="协议没公开，只能挨个试。把要找的马达选上，点开始，"
+                         "感觉到它在震就立刻点「有感，就它了」。",
+                 font=(FONT, 8), fg=C_SUB, bg=C_BG, wraplength=400,
+                 justify="left").pack(anchor="w", padx=14)
+        mf = tk.Frame(w, bg=C_BG)
+        mf.pack(fill="x", padx=14, pady=(8, 2))
+        for key, name in self.MOTORS:
+            tk.Radiobutton(mf, text=name, variable=self.which, value=key,
+                           font=(FONT, 9), fg=C_TEXT, bg=C_BG,
+                           activebackground=C_BG, selectcolor="#eaf5ea",
+                           command=self._on_pick).pack(side="left", padx=2)
+        self.prog = tk.Label(w, text="点「开始扫描」", font=(FONT, 9),
+                             fg=C_TEXT, bg=C_BG, justify="left")
+        self.prog.pack(anchor="w", padx=14, pady=(10, 2))
+        self.hex_lbl = tk.Label(w, text="", font=("Consolas", 9), fg=C_SUB,
+                                bg=C_BG)
+        self.hex_lbl.pack(anchor="w", padx=14)
+        cf = tk.Frame(w, bg=C_BG)
+        cf.pack(fill="x", padx=14, pady=(4, 0))
+        tk.Label(cf, text="通道", font=(FONT, 8), fg=C_SUB,
+                 bg=C_BG).pack(side="left")
+        tk.Radiobutton(cf, text="只试 WriteFile（快）", variable=self.chan_mode,
+                       value="write", font=(FONT, 8), fg=C_TEXT, bg=C_BG,
+                       activebackground=C_BG,
+                       selectcolor="#eaf5ea").pack(side="left", padx=4)
+        tk.Radiobutton(cf, text="两种通道都试（慢一倍）", variable=self.chan_mode,
+                       value="both", font=(FONT, 8), fg=C_TEXT, bg=C_BG,
+                       activebackground=C_BG,
+                       selectcolor="#eaf5ea").pack(side="left")
+        bf = tk.Frame(w, bg=C_BG)
+        bf.pack(fill="x", padx=14, pady=(12, 6))
+        self.btn_go = tk.Button(bf, text="开始扫描", font=(FONT, 9), fg="white",
+                                bg=C_ACC, activebackground=C_ACC_DK,
+                                activeforeground="white", relief="flat",
+                                padx=10, pady=4, cursor="hand2",
+                                command=self.start)
+        self.btn_go.pack(side="left")
+        self.btn_got = tk.Button(bf, text="有感，就它了", font=(FONT, 9),
+                                 fg="#1e7e34", bg="#e6f4ea", relief="flat",
+                                 padx=10, pady=4, cursor="hand2",
+                                 state="disabled", command=self.got)
+        self.btn_got.pack(side="left", padx=4)
+        tk.Button(bf, text="下一条", font=(FONT, 9), fg=C_TEXT, bg="#f0f1f4",
+                  relief="flat", padx=10, pady=4, cursor="hand2",
+                  command=self.skip).pack(side="left")
+        tk.Button(bf, text="停", font=(FONT, 9), fg="#c0392b", bg="#fdecea",
+                  relief="flat", padx=10, pady=4, cursor="hand2",
+                  command=self.stop).pack(side="left", padx=4)
+        self.btn_undo = tk.Button(bf, text="撤销上次", font=(FONT, 9),
+                                  fg=C_TEXT, bg="#f0f1f4", relief="flat",
+                                  padx=8, pady=4, cursor="hand2",
+                                  state="disabled", command=self.undo)
+        self.btn_undo.pack(side="left")
+        tk.Label(w, text="全程手柄都在通电状态，扫完记得停一下；"
+                         "中途卡住震个不停就点「停」再关窗口。",
+                 font=(FONT, 7), fg="#a0a4ad", bg=C_BG, wraplength=400,
+                 justify="left").pack(anchor="w", padx=14, pady=(6, 0))
+        w.protocol("WM_DELETE_WINDOW", self.close)
+        self._on_pick()
+
+    # ---------------------------------------------------------- 交互
+    def _on_pick(self):
+        n = dict(self.MOTORS).get(self.which.get(), "")
+        self.prog.config(text=f"目标：{n}")
+
+    def start(self):
+        if self.th is not None and self.th.is_alive():
+            return
+        self.stop_ev.clear()
+        self.got_ev.clear()
+        self.skip_ev.clear()
+        self.btn_go.config(state="disabled")
+        self.btn_got.config(state="normal")
+        self.th = threading.Thread(target=self._run, daemon=True)
+        self.th.start()
+
+    def got(self):
+        self.got_ev.set()
+
+    def undo(self):
+        """存错了就退回保存前的那条命令"""
+        if not self._undo:
+            return
+        key, old = self._undo
+        if old is None:
+            self.app.km.pop(key, None)
+        else:
+            self.app.km[key] = old
+        betop.save_keymap(self.app.km)
+        rm = self.app.rumble
+        if rm is not None:
+            if key == "rumble_custom_trig":
+                rm.custom_trig = self.app.km.get(key)
+            else:
+                rm.custom = self.app.km.get(key)
+        self.app._refresh_motor_btns()
+        self._undo = None
+        self.btn_undo.config(state="disabled")
+        self.prog.config(text="已撤销，回到保存前的命令")
+
+    def skip(self):
+        self.skip_ev.set()
+
+    def stop(self):
+        self.stop_ev.set()
+
+    def close(self):
+        self.stop_ev.set()
+        try:
+            if self.th is not None:
+                self.th.join(timeout=1.5)
+        except Exception:
+            pass
+        try:
+            self.rm.stop_all()
+            self.rm.close()
+        except Exception:
+            pass
+        try:
+            self.win.destroy()
+        except Exception:
+            pass
+
+    # ---------------------------------------------------------- 扫描
+    def _chans(self):
+        return ("write", "set") if self.chan_mode.get() == "both" \
+            else ("write",)
+
+    def _busy_offsets(self):
+        """别的马达已经占掉的字节位置。
+
+        扫右柄时第一条候选本来是「头 0x08 + 第 3 字节」—— 那正是左柄大马达
+        的命令，手柄必然在震，一感觉到就点「有感」就会把右柄记成左柄的位置，
+        结果震动全废。所以这些位置直接跳过不试。
+        """
+        which = self.which.get()
+        out = set()
+        for key in ("rumble_custom", "rumble_custom_trig"):
+            tpl = self.app.km.get(key) or {}
+            for k, off in betop._norm_motor(tpl.get("motor")).items():
+                if k != which:
+                    out.add(off)
+        return out
+
+    def _candidates(self):
+        skip = self._busy_offsets()
+        out = []
+        for chan in self._chans():
+            for head in self.HEADS:
+                for off in self.OFFS:
+                    if off in skip:
+                        continue
+                    out.append((chan, head, off))
+        return out
+
+    def _send(self, chan, head, off, v):
+        b = [2] + [0] * 63
+        if head:
+            b[1] = head
+        b[off] = v
+        try:
+            if chan == "set":
+                self.rm.dev.set_report(b)
+            else:
+                self.rm.dev.write(b)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _hex(head, off, v=255):
+        b = [2] + [0] * 63
+        if head:
+            b[1] = head
+        b[off] = v
+        return " ".join(f"{x:02X}" for x in b[:10]) + " …"
+
+    def _run(self):
+        cands = self._candidates()
+        total = len(cands)
+        i = 0
+        for chan, head, off in cands:
+            if self.stop_ev.is_set():
+                return self._done(False)
+            i += 1
+            self.cur = (chan, head, off, i)
+            # 每条一开始就锁住「有感」，0.7 秒后才让点 —— 防手快点错
+            self.app.root.after(0, lambda i=i, h=head, o=off, c=chan: (
+                self.btn_got.config(state="disabled"),
+                self.prog.config(
+                    text=f"第 {i}/{total} 条："
+                         f"{'SET_REPORT' if c == 'set' else 'WriteFile'}"
+                         f" · 头 0x{h:02X} · 强度写在第 {o} 字节"),
+                self.hex_lbl.config(text=self._hex(h, o))))
+            self.app.root.after(700, lambda: (
+                self.btn_got.config(state="normal")
+                if not self.stop_ev.is_set() else None))
+            t0 = time.time()
+            while time.time() - t0 < self.TRY_SEC:
+                if self.stop_ev.is_set() or self.got_ev.is_set() \
+                        or self.skip_ev.is_set():
+                    break
+                self._send(chan, head, off, 255)
+                time.sleep(0.05)
+            self._send(chan, head, off, 0)
+            if self.got_ev.is_set():
+                c, h, o, _n = self.cur
+                self.app.root.after(0, lambda c=c, h=h, o=o:
+                                    self._save(c, h, o))
+                return
+            self.skip_ev.clear()
+        self._done(True)
+
+    def _done(self, finished):
+        def ui():
+            self.btn_go.config(state="normal")
+            self.btn_got.config(state="disabled")
+            if finished:
+                self.prog.config(text="扫完了，都没反应 —— 这个马达可能根本"
+                                      "没装，或者得走别的通道")
+        self.app.root.after(0, ui)
+
+    # ---------------------------------------------------------- 保存
+    @staticmethod
+    def _fmt_to_spec(idx):
+        """把下拉里正在用的那条候选命令反推成模板。
+
+        没自定义模板时（keymap 里 rumble_custom 为空）震动全靠下拉那条，
+        这时扫出右柄可不能直接存个只有 small 的模板 —— 左柄会跟着失效。
+        所以先把当前那条候选翻译成模板，再往里补新扫到的槽位。
+        """
+        name, ch, fn = betop.RUMBLE_FORMATS[idx]
+        z, a, b = fn(0, 0), fn(255, 0), fn(0, 255)
+        fixed, motor = [], {}
+        for i in range(64):
+            if z[i]:
+                fixed.append((i, z[i]))
+        for i in range(64):
+            if z[i] == 0 and a[i] == 255:
+                motor["big"] = i
+            if z[i] == 0 and b[i] == 255:
+                motor["small"] = i
+        return {"chan": "set" if ch == 0 else "write",
+                "fixed": fixed, "motor": motor}
+
+    def _save(self, chan, head, off):
+        which = self.which.get()
+        key = self.app._motor_tpl_key(which)
+        tpl = dict(self.app.km.get(key) or {})
+        self._undo = (key, self.app.km.get(key))     # 存错了能退回去
+        if not tpl and key == "rumble_custom":
+            tpl = self._fmt_to_spec(self.app._fmt_index())
+        # 存之前先让人核一遍：扫的时候很容易把别的马达的震动当成目标马达
+        name = dict(self.MOTORS).get(which, which)
+        old_off = betop._norm_motor(tpl.get("motor")).get(which)
+        msg = (f"要把「{name}」的强度写在第 {off} 字节"
+               f"（命令头 0x{head:02X}，"
+               f"{'SET_REPORT' if chan == 'set' else 'WriteFile'}）")
+        if old_off is not None and old_off != off:
+            msg += f"\n这个马达原来记的是第 {old_off} 字节，会被改掉"
+        msg += ("\n\n确定刚才是【这个马达】在震，不是别的马达？\n"
+                "拿不准就点「否」，继续扫下一条。")
+        if not messagebox.askyesno("确认保存这条命令", msg, parent=self.win):
+            self.prog.config(text="没保存，继续扫下一条")
+            return
+        old_head = None
+        for o, v in tpl.get("fixed") or []:
+            if o == 1:
+                old_head = v
+        if old_head is not None and old_head != head and not messagebox.askyesno(
+                "命令头不一样",
+                f"这条的命令头是 0x{head:02X}，但现在已经存的是 "
+                f"0x{old_head:02X}。\n换成新的可能让原来能震的马达失效，换吗？",
+                parent=self.win):
+            return
+        tpl["chan"] = chan
+        tpl["fixed"] = [[1, head]] + [f for f in (tpl.get("fixed") or [])
+                                      if f[0] != 1]
+        mot = tpl.get("motor")
+        if isinstance(mot, list):
+            d = {}
+            if len(mot) > 0 and mot[0]:
+                d["big"] = mot[0]
+            if len(mot) > 1 and mot[1]:
+                d["small"] = mot[1]
+            mot = d
+        mot = dict(mot or {})
+        mot[which] = off
+        tpl["motor"] = mot
+        self.app.km[key] = tpl
+        betop.save_keymap(self.app.km)
+        rm = self.app.rumble
+        if rm is not None:
+            if which in ("tl", "tr"):
+                rm.custom_trig = tpl
+            else:
+                rm.custom = tpl
+        self.app._refresh_motor_btns()
+        self.btn_undo.config(state="normal")
+        name = dict(self.MOTORS).get(which, which)
+        self.prog.config(text=f"存好了：{name} → 头 0x{head:02X} "
+                              f"第 {off} 字节（不对就点「撤销上次」）")
+        messagebox.showinfo("存好了",
+                            f"「{name}」的命令：\n"
+                            f"  命令头 0x{head:02X}，强度写在第 {off} 字节\n\n"
+                            f"现在去主界面点那个马达的按钮就能单独震了。",
+                            parent=self.win)
 
 
 def main():

@@ -333,39 +333,106 @@ def _build_formats():
 RUMBLE_FORMATS = _build_formats()
 
 
+def _norm_motor(m):
+    """马达槽位归一化。旧模板 motor 是 [左柄, 右柄] 两个偏移；
+    新模板是 {"big":off, "small":off, "tl":off, "tr":off}，四个槽各自独立，
+    没扫出来的马达就不在里面（发了也没字段可写）。"""
+    if isinstance(m, dict):
+        return {k: int(v) for k, v in m.items()
+                if v and k in ("big", "small", "tl", "tr")}
+    if isinstance(m, (list, tuple)):
+        out = {}
+        if len(m) >= 1 and m[0]:
+            out["big"] = int(m[0])
+        if len(m) >= 2 and m[1]:
+            out["small"] = int(m[1])
+        return out
+    return {}
+
+
 class Rumble:
-    """把虚拟手柄收到的震动指令转发给物理手柄。"""
+    """把虚拟手柄收到的震动指令转发给物理手柄。
+
+    这把定制版有四套马达：左柄（大）、右柄（小）、左扳机、右扳机
+    （官方 GO柄 app 里就有「手柄马达 / 扳机马达」两个测试页）。
+    - 手柄马达：命令模板 rumble_custom（ motor 槽位 big/small ）
+    - 扳机马达：私有协议另一条命令，模板 custom_trig（槽位 tl/tr），
+      游戏走 XInput 只有两大马达信号，扳机只能本地测试或开「跟随」
+    """
 
     # 固件收到命令只会震很短一下（不像 XInput 会自己持续），
     # 所以要不停重发，游戏里的持续震动才不会变成"抖一下"。
     HB_INTERVAL = 0.20
 
-    def __init__(self, fmt=0, enabled=True, custom=None):
+    def __init__(self, fmt=0, enabled=True, custom=None, custom_trig=None,
+                 merge=True):
         self.dev = None
         self.fmt = fmt
         self.enabled = enabled
         self._last = None
-        self._target = (0, 0)
+        self._target = (0, 0, 0, 0)      # big small tl tr
         self._hb_stop = threading.Event()
         self._hb = None
+        # merge：不分左右/扳机，四个马达共用同一条命令、同一个强度
+        # （反正都是震动，能震就行；只找到一条可用命令时也靠它让全部马达都响）
+        self.merge = merge
         # custom = 实验室比出来的冠军命令，形如
-        #   {"chan": "write"/"set", "fixed": [(偏移, 值)...], "motor": [偏移...]}
-        # motor 里的字节会被马达强度覆盖；有它就不用猜格式了
+        #   {"chan": "write"/"set", "fixed": [(偏移, 值)...],
+        #    "motor": {"big": off, "small": off, ...}}
+        # motor 槽位对应的字节会被马达强度覆盖；有它就不用猜格式了
         self.custom = custom
+        # 扳机马达的独立命令（没有就代表还没扫出来，扳机发不出东西）
+        self.custom_trig = custom_trig
 
     # ------------------------------------------------------ 造帧
-    def frame(self, l, r):
-        c = self.custom
-        if not c:
-            return RUMBLE_FORMATS[self.fmt][2](l, r)
+    @staticmethod
+    def _build(tpl, vals):
         b = [2] + [0] * 63
-        for off, val in c.get("fixed", []):
-            b[off] = val
-        m = [o for o in c.get("motor", []) if o != 1] or [3]
-        b[m[0]] = max(l, r) if len(m) == 1 else l
-        if len(m) >= 2:
-            b[m[1]] = r
+        for off, val in tpl.get("fixed") or []:
+            if 0 <= off < 64:
+                b[off] = val
+        for key, off in _norm_motor(tpl.get("motor")).items():
+            if 0 <= off < 64:
+                b[off] = vals.get(key, 0) & 0xFF
         return b
+
+    def _vals(self, l, r, tl, tr):
+        """合并模式下四个槽位都写同一个值（取最大），不然各写各的"""
+        if self.merge:
+            m = max(l, r, tl, tr)
+            return {"big": m, "small": m, "tl": m, "tr": m}
+        return {"big": l, "small": r, "tl": tl, "tr": tr}
+
+    def frame(self, l, r, tl=0, tr=0):
+        """主帧：手柄马达（没配自定义模板就退回下拉里的候选格式）"""
+        c = self.custom
+        v = self._vals(l, r, tl, tr)
+        if not c:
+            return RUMBLE_FORMATS[self.fmt][2](v["big"], v["small"])
+        return self._build(c, v)
+
+    def trig_frames(self, tl, tr):
+        """扳机马达的帧；没配独立模板返回 []"""
+        if not self.custom_trig:
+            return []
+        return [self._build(self.custom_trig, self._vals(0, 0, tl, tr))]
+
+    def frames(self, l, r, tl=0, tr=0):
+        out = [self.frame(l, r, tl, tr)]
+        out += self.trig_frames(tl, tr)
+        return out
+
+    def has_motor(self, which):
+        """这个马达有没有可用的命令模板（发了有没有效果）"""
+        if self.merge:
+            # 合并模式下四个马达共用一条命令，只要能震就都算能震
+            return True
+        if which in ("tl", "tr"):
+            t = self.custom_trig
+            return bool(t and _norm_motor(t.get("motor")).get(which))
+        if self.custom is None:
+            return True          # 下拉候选格式左右槽都在
+        return bool(_norm_motor(self.custom.get("motor")).get(which))
 
     # ------------------------------------------------------ 心跳续发
     def _ensure_hb(self):
@@ -378,10 +445,12 @@ class Rumble:
     def _hb_loop(self):
         while not self._hb_stop.is_set():
             time.sleep(self.HB_INTERVAL)
-            l, r = self._target
-            if (l or r) and self.dev is not None and self.enabled:
+            big, small, tl, tr = self._target
+            if (big or small or tl or tr) and self.dev is not None \
+                    and self.enabled:
                 try:
-                    self._send(self.frame(l, r))
+                    for f in self.frames(big, small, tl, tr):
+                        self._send(f)
                 except Exception:
                     pass
 
@@ -406,24 +475,24 @@ class Rumble:
             return True
         return self.dev.set_report(data)
 
-    def set(self, big, small):
-        """big/small 都是 0..255"""
+    def set(self, big, small, tl=0, tr=0):
+        """四个马达 0..255。游戏信号只来 big/small，扳机要跟随或测试才有"""
         if self.dev is None or not self.enabled:
             return
-        l = max(0, min(255, int(big)))
-        r = max(0, min(255, int(small)))
-        self._target = (l, r)
-        key = (l, r, self.fmt)
+        v = tuple(max(0, min(255, int(x))) for x in (big, small, tl, tr))
+        self._target = v
+        key = v + (self.fmt, id(self.custom_trig))
         if key == self._last:      # 值没变就不用立刻重写，心跳会续着
-            if l or r:
+            if any(v):
                 self._ensure_hb()
             return
         self._last = key
         try:
-            self._send(self.frame(l, r))
+            for f in self.frames(*v):
+                self._send(f)
         except Exception:
             pass
-        if l or r:
+        if any(v):
             self._ensure_hb()      # 只要还在震就一直续发
 
     def play_once(self, idx, strength=255, secs=0.9):
@@ -432,26 +501,69 @@ class Rumble:
         self._last = None
         self._send(self.frame(strength, strength))
 
+    def play_motor(self, which, strength=255, secs=0.9):
+        """单马达试震。which: big=左柄 / small=右柄 / tl=左扳机 / tr=右扳机"""
+        s = max(0, min(255, int(strength)))
+        if self.merge:                  # 合并模式下点哪个都是四个一起震
+            fs = self.frames(s, s, s, s)
+            t0 = time.time()
+            while time.time() - t0 < secs:
+                for f in fs:
+                    self._send(f)
+                time.sleep(0.05)
+            for z in self.frames(0, 0, 0, 0):
+                try:
+                    self._send(z)
+                except Exception:
+                    pass
+            return
+        vals = {"big": 0, "small": 0, "tl": 0, "tr": 0}
+        vals[which] = s
+        if which in ("tl", "tr"):
+            fs = self.trig_frames(vals["tl"], vals["tr"])
+            if not fs:
+                raise RuntimeError("还没给扳机马达扫出命令，先点「扫描马达命令」")
+        else:
+            fs = [self.frame(vals["big"], vals["small"])]
+        t0 = time.time()
+        while time.time() - t0 < secs:
+            for f in fs:
+                self._send(f)
+            time.sleep(0.05)
+        for z in self.frames(0, 0, 0, 0):
+            try:
+                self._send(z)
+            except Exception:
+                pass
+
     def stop(self):
         """用当前格式回写 0，让马达停转"""
         self._last = None
-        self._target = (0, 0)
+        self._target = (0, 0, 0, 0)     # 四个马达全停，别写成两元组
         if self.dev is None:
             return
         try:
-            self._send(self.frame(0, 0))
+            for f in self.frames(0, 0, 0, 0):
+                self._send(f)
         except Exception:
             pass
 
     def stop_all(self):
         """保险起见，把所有已知载荷都清一遍（有手柄收到某条命令后会一直震）"""
         self._last = None
-        self._target = (0, 0)
+        self._target = (0, 0, 0, 0)
         if self.dev is None:
             return
         if self.custom:               # 自定义冠军命令也要回写 0
             try:
                 z = self.frame(0, 0)
+                self.dev.write(z)
+                self.dev.set_report(z)
+            except Exception:
+                pass
+        if self.custom_trig:          # 扳机模板同样要归零，不然会一直震
+            try:
+                z = self._build(self.custom_trig, {})
                 self.dev.write(z)
                 self.dev.set_report(z)
             except Exception:

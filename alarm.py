@@ -266,7 +266,9 @@ class AlarmClock:
         try:
             self._rm = betop.Rumble(
                 fmt=int(self.km.get("rumble_fmt", 0) or 0),
-                custom=self.km.get("rumble_custom")).open()
+                custom=self.km.get("rumble_custom"),
+                custom_trig=self.km.get("rumble_custom_trig"),
+                merge=bool(self.km.get("rumble_merge", True))).open()
         except Exception as e:
             self.q.put(("error", "打不开震动通道：%s" % e))
             return
@@ -674,7 +676,9 @@ if tk is not None:
                 try:
                     rm = betop.Rumble(
                         fmt=int(self.km.get("rumble_fmt", 0) or 0),
-                        custom=self.km.get("rumble_custom")).open()
+                        custom=self.km.get("rumble_custom"),
+                custom_trig=self.km.get("rumble_custom_trig"),
+                merge=bool(self.km.get("rumble_merge", True))).open()
                 except Exception as e:
                     self.after(0, lambda: self.cd_lbl.config(
                         text="打不开震动通道：%s" % e, fg="#c0392b"))
