@@ -56,30 +56,90 @@ def round_rect(cv, x1, y1, x2, y2, r, **kw):
 
 
 class PadView:
-    """中央那张 Xbox 手柄图"""
+    """手柄图 —— 直接用 BTP-V1T 实物照片做底图，按键高亮/摇杆点叠在照片上。
+
+    热区坐标按 1365x1024 原图标定（_calib 脚本用颜色特征找的 ABXY 圆心，
+    其余按布局目测），运行时按画布大小等比缩放。
+    点击用画布级 hit-test（Canvas 的 fill="" 元素不响应 tag_bind）。
+    """
+
+    IMG_W, IMG_H = 1365, 1024
+
+    # 圆形按键：名字 -> (cx, cy, r)，原图像素
+    BTN_CIRC = {
+        "Y": (1060, 296, 57), "X": (963, 393, 57),
+        "B": (1157, 393, 57), "A": (1060, 490, 57),
+        "BACK": (488, 291, 40), "START": (857, 288, 40),
+        "GUIDE": (779, 397, 40),
+        "LS": (270, 382, 100), "RS": (869, 588, 108),
+    }
+    # FN 键固件不上报，刻意不进热区（跟旧版一致：不亮、不可改键）
+    DPAD_C = (471, 591, 121, 78)          # 十字键 cx, cy, 臂长, 臂宽
+    SHOULDER = {"LB": (212, 115, 443, 194), "RB": (928, 115, 1150, 194)}
+    TRIGGERS = {"LT": (255, 64, 406, 106), "RT": (952, 64, 1116, 106)}
+    KNOB_R = 83                            # 摇杆帽本体半径（原图像素）
 
     def __init__(self, canvas):
         self.cv = canvas
-        self.items = {}        # 名字 -> [item ids]
+        self.items = {}        # 名字 -> [高亮 item ids]
         self.dpad_items = {}   # 方向 -> item id
-        self.trig = {}         # LT/RT -> (x1, x2, fill_id)
-        self.knob_l = self.knob_r = None
-        self.glow = None
-        self.hl = None         # 当前高亮的键名
+        self.trig = {}         # LT/RT -> item id
+        self.zones = []        # (name, x1, y1, x2, y2) 画布坐标
+        self.knob_l = self.knob_r = None   # (dot_id, bx, by, 位移半径)
+        self.hl = None
         self._cb = None
+        cv = self.cv
+        cv.bind("<Button-1>", self._on_click)
+        cv.bind("<Motion>", self._on_motion)
         self.draw()
 
+    # -------------------------------------------------- 底图
+    @staticmethod
+    def _load_photo(w, h):
+        """按目标尺寸缩放实物照片，结果按尺寸缓存（PhotoImage 必须持有引用）"""
+        import os
+        import sys
+        from PIL import Image, ImageTk
+        key = (w, h)
+        if key not in _PHOTO_CACHE:
+            base = getattr(sys, "_MEIPASS",
+                           os.path.dirname(os.path.abspath(__file__)))
+            p = os.path.join(base, "pad_front.jpg")
+            img = Image.open(p).convert("RGB").resize((w, h), Image.LANCZOS)
+            _PHOTO_CACHE[key] = ImageTk.PhotoImage(img)
+        return _PHOTO_CACHE[key]
+
     # -------------------------------------------------- 绘制
-    def _add(self, name, item):
+    def _reg(self, name, item, zx1, zy1, zx2, zy2):
         self.items.setdefault(name, []).append(item)
-        if self._cb:
-            self.cv.tag_bind(item, "<Button-1>", lambda e, n=name: self._cb(n))
-            self.cv.tag_bind(item, "<Enter>",
-                             lambda e: self.cv.config(cursor="hand2"))
-            self.cv.tag_bind(item, "<Leave>", lambda e: self.cv.config(cursor=""))
+        self.zones.append((name, zx1, zy1, zx2, zy2))
+
+    def _hi(self, x1, y1, x2, y2, shape="oval"):
+        """建一个初始不可见的高亮块，按下时叠绿色半透明"""
+        kw = dict(fill="", outline="", width=4)
+        if shape == "oval":
+            return self.cv.create_oval(x1, y1, x2, y2, **kw)
+        return self.cv.create_rectangle(x1, y1, x2, y2, **kw)
 
     def bind_click(self, cb):
         self._cb = cb
+
+    def _hit(self, ex, ey):
+        for name, x1, y1, x2, y2 in self.zones:
+            if x1 <= ex <= x2 and y1 <= ey <= y2:
+                return name
+        return None
+
+    def _on_click(self, e):
+        n = self._hit(e.x, e.y)
+        if n and self._cb:
+            self._cb(n)
+
+    def _on_motion(self, e):
+        try:
+            self.cv.config(cursor="hand2" if self._hit(e.x, e.y) else "")
+        except Exception:
+            pass
 
     def draw(self):
         cv = self.cv
@@ -87,131 +147,61 @@ class PadView:
         self.items.clear()
         self.dpad_items.clear()
         self.trig.clear()
+        self.zones = []
 
-        # 机身：一条平滑闭合轮廓勾出整个手柄（含双握把和中下凹口）
-        cv.create_polygon(
-            [120, 162, 152, 132, 212, 124, 262, 116, 284, 108, 306, 116,
-             356, 124, 416, 132, 448, 162, 468, 210, 466, 258, 438, 326,
-             400, 356, 356, 349, 330, 308, 284, 294, 238, 308, 212, 349,
-             168, 356, 130, 326, 102, 258, 100, 210],
-            smooth=True, fill=P_BODY, outline="")
-        # 顶部中间的小凸起（USB 口的意思）
-        round_rect(cv, 268, 100, 300, 116, 6, fill=P_BODY, outline="")
-
-        # 扳机
-        for name, x1, x2 in (("LT", 160, 238), ("RT", 322, 400)):
-            bg = round_rect(cv, x1, 52, x2, 74, 11, fill=P_RING, outline="")
-            fl = round_rect(cv, 0, 0, 0, 0, 9, fill=C_PRESS, outline="")
-            cv.coords(fl, [0, 0, 0, 0])
-            self.trig[name] = (x1 + 2, x2 - 2, fl)
-            self._add(name, bg)
-            cv.create_text((x1 + x2) // 2, 42, text=name,
-                           font=("Consolas", 8, "bold"), fill=C_SUB)
-
-        # 肩键
-        for name, x1, x2 in (("LB", 154, 250), ("RB", 310, 406)):
-            it = round_rect(cv, x1, 82, x2, 102, 9, fill=P_KNOB, outline="")
-            self._add(name, it)
-            cv.create_text((x1 + x2) // 2, 92, text=name,
-                           font=("Consolas", 8, "bold"), fill="white")
-
-        # 中央亮面斜面板（实物上半部那块梯形饰板，压在摇杆底座之下）
-        cv.create_polygon([234, 118, 334, 118, 360, 198, 208, 198],
-                          smooth=True, fill=P_PANEL, outline="#3a3d48")
-
-        # 左摇杆（上左）
-        lx, ly, lr = 206, 182, 40
-        cv.create_oval(lx - lr, ly - lr, lx + lr, ly + lr, fill=P_RING, outline="")
-        k = cv.create_oval(lx - 25, ly - 25, lx + 25, ly + 25, fill=P_KNOB, outline="")
-        self._add("LS", k)
-        cv.create_text(lx, ly, text="LS", font=("Consolas", 8, "bold"), fill="#c9c9cf")
-        self.knob_l = (k, lx, ly)
-
-        # 右摇杆（下中）：底座外圈带一圈蓝色 LED 光环（实物特征）
-        rx, ry, rr = 352, 268, 40
-        cv.create_oval(rx - rr - 4, ry - rr - 4, rx + rr + 4, ry + rr + 4,
-                       fill="", outline=P_LED, width=2)
-        cv.create_oval(rx - rr, ry - rr, rx + rr, ry + rr, fill=P_RING, outline="")
-        k2 = cv.create_oval(rx - 25, ry - 25, rx + 25, ry + 25, fill=P_KNOB, outline="")
-        self._add("RS", k2)
-        cv.create_text(rx, ry, text="RS", font=("Consolas", 8, "bold"), fill="#c9c9cf")
-        self.knob_r = (k2, rx, ry)
-
-        # 十字键（下左）：连成一体的大十字（亮面黑）
-        dx, dy, ds = 220, 262, 26
-        L, W = ds * 1.5, ds * 0.44
-        for name, ox, oy in (("UP", 0, -1), ("DOWN", 0, 1),
-                             ("LEFT", -1, 0), ("RIGHT", 1, 0)):
-            if ox:
-                x1, x2 = (dx, dx + ox * L) if ox > 0 else (dx + ox * L, dx)
-                y1, y2 = dy - W, dy + W
-            else:
-                x1, x2 = dx - W, dx + W
-                y1, y2 = (dy, dy + oy * L) if oy > 0 else (dy + oy * L, dy)
-            it = round_rect(cv, x1, y1, x2, y2, 7, fill=P_DPAD, outline="#3d404a")
-            self.dpad_items[name] = it
-            self._add(name, it)
-        # 中心小块补缝
-        round_rect(cv, dx - W, dy - W, dx + W, dy + W, 4,
-                   fill=P_DPAD, outline="#3d404a")
-
-        # ABXY（右上菱形）：实机点亮四色 —— Y 橙 / X 蓝 / B 红 / A 绿，字母白
-        fx, fy, fr = 378, 172, 38
-        for name, ox, oy in (("Y", 0, -1), ("A", 0, 1), ("X", -1, 0), ("B", 1, 0)):
-            cx, cy = fx + ox * fr, fy + oy * fr
-            it = cv.create_oval(cx - 17, cy - 17, cx + 17, cy + 17,
-                               fill=ABXY_COLORS[name][0], outline="#101116")
-            self._add(name, it)
-            cv.create_text(cx, cy + 1, text=name, font=("Consolas", 11, "bold"),
-                           fill="white")
-
-        # 中央控制区：↩ BACK（左上返回键）/ ☰ START（右上菜单键），
-        #            FN（纯装饰，这把的 FN 固件不上报）+ 蓝色箭头 LOGO = GUIDE
-        it = cv.create_oval(248, 134, 270, 156, fill=P_ABXY, outline="#41444f")
-        self._add("BACK", it)
-        cv.create_text(259, 145, text="↩", font=(FONT, 13, "bold"), fill="#9aa0ae")
-
-        it = cv.create_oval(298, 134, 320, 156, fill=P_ABXY, outline="#41444f")
-        self._add("START", it)
-        cv.create_text(309, 145, text="☰", font=(FONT, 12, "bold"), fill="#9aa0ae")
-
-        # FN 键：固件不上报，按下去没有任何数据，画出来只是为了还原实物。
-        # 不注册进 items，所以它不会被点亮，也不出现在改键列表里
-        round_rect(cv, 246, 170, 272, 190, 5, fill="#191b21", outline="#2b2e37")
-        cv.create_text(259, 180, text="FN", font=("Consolas", 8, "bold"),
-                       fill="#4a4e58")
-
-        # 蓝色箭头 logo 键 = GUIDE
-        cv.create_oval(292, 166, 324, 196, fill="", outline=P_LED, width=1)
-        it = cv.create_oval(296, 170, 320, 192, fill=P_ABXY, outline="#41444f")
-        self._add("GUIDE", it)
-        cv.create_text(307, 180, text="➤", font=(FONT, 11, "bold"), fill=P_LED)
-
-        # 中央蓝色 LED 灯阵（4x3 小圆点，实物特征）
-        for r in range(3):
-            for c in range(4):
-                x0, y0 = 268 + c * 14, 222 + r * 14
-                cv.create_oval(x0, y0, x0 + 5, y0 + 5, fill=P_LED, outline="")
-        self.glow = None
-
-        # 整体平移居中：原稿按 560 宽的画布画（内容占 100..468），
-        # 画布变窄（比如 480）时把图挪到正中间，别偏在一边。
-        # 存了绝对坐标的摇杆帽 / 扳机条也要跟着挪，不然刷新会错位
         try:
-            cw = int(cv["width"])
+            cw, ch = int(cv["width"]), int(cv["height"])
         except Exception:
-            cw = 560
-        dx = max(0, (cw - 368) // 2) - 100
-        if dx:
-            cv.move("all", dx, 0)
-            self.trig = {n: (x1 + dx, x2 + dx, it)
-                         for n, (x1, x2, it) in self.trig.items()}
-            if self.knob_l:
-                self.knob_l = (self.knob_l[0], self.knob_l[1] + dx,
-                               self.knob_l[2])
-            if self.knob_r:
-                self.knob_r = (self.knob_r[0], self.knob_r[1] + dx,
-                               self.knob_r[2])
+            cw, ch = 560, 370
+        s = min(cw / self.IMG_W, ch / self.IMG_H)
+        w, h = int(self.IMG_W * s), int(self.IMG_H * s)
+        ox, oy = (cw - w) // 2, (ch - h) // 2
+        cv.create_image(ox, oy, anchor="nw",
+                        image=self._load_photo(w, h))
+
+        def X(x):
+            return ox + x * s
+
+        def Y(y):
+            return oy + y * s
+
+        def R(r):
+            return r * s
+
+        # 圆形按键：BACK/START/GUIDE/ABXY + LS/RS（热区 + 高亮块）
+        for name, (cx, cy, r) in self.BTN_CIRC.items():
+            it = self._hi(X(cx - r), Y(cy - r), X(cx + r), Y(cy + r))
+            self._reg(name, it, X(cx - r), Y(cy - r), X(cx + r), Y(cy + r))
+
+        # 十字键四臂
+        dx, dy, L, Wd = self.DPAD_C
+        arms = (("UP", dx - Wd / 2, dy - L, dx + Wd / 2, dy - L * 0.12),
+                ("DOWN", dx - Wd / 2, dy + L * 0.12, dx + Wd / 2, dy + L),
+                ("LEFT", dx - L, dy - Wd / 2, dx - L * 0.12, dy + Wd / 2),
+                ("RIGHT", dx + L * 0.12, dy - Wd / 2, dx + L, dy + Wd / 2))
+        for name, x1, y1, x2, y2 in arms:
+            it = self._hi(X(x1), Y(y1), X(x2), Y(y2), shape="rect")
+            self.dpad_items[name] = it
+            self._reg(name, it, X(x1), Y(y1), X(x2), Y(y2))
+
+        # 肩键 / 扳机（图顶上露出的那两条）
+        for name, (x1, y1, x2, y2) in self.SHOULDER.items():
+            it = self._hi(X(x1), Y(y1), X(x2), Y(y2), shape="rect")
+            self._reg(name, it, X(x1), Y(y1), X(x2), Y(y2))
+        for name, (x1, y1, x2, y2) in self.TRIGGERS.items():
+            it = self._hi(X(x1), Y(y1), X(x2), Y(y2), shape="rect")
+            self.trig[name] = it
+            self._reg(name, it, X(x1), Y(y1), X(x2), Y(y2))
+
+        # 摇杆位移指示点：半透明圆叠在帽上随轴滑动（值正=上推，y 取反）
+        for tag, bx, by in (("L", 270, 382), ("R", 869, 588)):
+            dot = cv.create_oval(0, 0, 0, 0, fill="#ffffff",
+                                 stipple="gray50", outline="")
+            if tag == "L":
+                self.knob_l = (dot, X(bx), Y(by), R(40))
+            else:
+                self.knob_r = (dot, X(bx), Y(by), R(40))
+        self.glow = None
 
     # -------------------------------------------------- 刷新
     def highlight(self, name):
@@ -222,43 +212,43 @@ class PadView:
         b = buttons or {}
         a = axes or {}
 
+        # 按键高亮：按下 = 绿色半透明，向导待按 = 琥珀
         for name, ids in self.items.items():
-            if name in ("LT", "RT", "LS", "RS"):
+            if name in ("LS", "RS", "LT", "RT"):
                 continue
             on = bool(b.get(name))
-            if name in ABXY_COLORS:            # 四色键：按下变亮
-                base, lit = ABXY_COLORS[name]
-                col = lit if on else (C_HL if self.hl == name else base)
+            if on:
+                st = dict(fill=C_PRESS, stipple="gray25",
+                          outline=C_PRESS, width=3)
+            elif self.hl == name:
+                st = dict(fill=C_HL, stipple="gray25",
+                          outline=C_HL, width=4)
             else:
-                col = P_KNOB
-                if on:
-                    col = C_PRESS
-                elif self.hl == name:
-                    col = C_HL
+                st = dict(fill="", outline="", width=0)
             for it in ids:
-                cv.itemconfig(it, fill=col)
+                cv.itemconfig(it, **st)
 
-        for name, it in self.dpad_items.items():
-            on = bool(b.get(name))
-            col = C_PRESS if on else (C_HL if self.hl == name else P_DPAD)
-            cv.itemconfig(it, fill=col)
+        # 扳机：按下深度超阈值就亮
+        for name, it in self.trig.items():
+            v = max(0.0, min(1.0, a.get(name, 0.0)))
+            if v > 0.05 or self.hl == name:
+                cv.itemconfig(it, fill=C_PRESS if v > 0.05 else C_HL,
+                              stipple="gray50", outline=C_PRESS, width=2)
+            else:
+                cv.itemconfig(it, fill="", outline="", width=0)
 
+        # 摇杆位移点
         for knob, ax, ay, nm in ((self.knob_l, "LX", "LY", "LS"),
                                  (self.knob_r, "RX", "RY", "RS")):
-            it, cx, cy = knob
-            dx = a.get(ax, 0.0) * 15
-            # 摇杆值正 = 上推（XInput 约定），但画布 y 向下为正，要取反
-            dy = -a.get(ay, 0.0) * 15
-            cv.coords(it, cx - 25 + dx, cy - 25 + dy, cx + 25 + dx, cy + 25 + dy)
-            cv.itemconfig(it, fill=(C_PRESS if b.get(nm) else P_KNOB))
+            it, bx, by, br = knob
+            dx = a.get(ax, 0.0) * br
+            dy = -a.get(ay, 0.0) * br
+            r = br * 0.9
+            cv.coords(it, bx - r + dx, by - r + dy, bx + r + dx, by + r + dy)
+            cv.itemconfig(it, fill=(C_PRESS if b.get(nm) else "#ffffff"))
 
-        for name in ("LT", "RT"):
-            x1, x2, it = self.trig[name]
-            v = max(0.0, min(1.0, a.get(name, 0.0)))
-            if v <= 0.001:
-                cv.coords(it, [0, 0, 0, 0])
-            else:
-                cv.coords(it, _rr_pts(x1, 54, x1 + (x2 - x1) * v, 72, 9))
+
+_PHOTO_CACHE = {}
 
 
 # ---- 程序图标（icon.ico 跟随 exe 打包，开发态用源码目录那份）----

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('icon.ico', '.')]
+datas = [('icon.ico', '.'), ('pad_front.jpg', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('vgamepad')
