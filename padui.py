@@ -166,7 +166,7 @@ class PadView:
                            fill="white")
 
         # 中央控制区：↩ BACK（左上返回键）/ ☰ START（右上菜单键），
-        #            FN（装饰）+ 蓝色箭头 LOGO = GUIDE（下排，实物上的 logo 键）
+        #            FN（纯装饰，这把的 FN 固件不上报）+ 蓝色箭头 LOGO = GUIDE
         it = cv.create_oval(248, 134, 270, 156, fill=P_ABXY, outline="#41444f")
         self._add("BACK", it)
         cv.create_text(259, 145, text="↩", font=(FONT, 13, "bold"), fill="#9aa0ae")
@@ -175,10 +175,11 @@ class PadView:
         self._add("START", it)
         cv.create_text(309, 145, text="☰", font=(FONT, 12, "bold"), fill="#9aa0ae")
 
-        it = round_rect(cv, 246, 170, 272, 190, 5, fill=P_ABXY, outline="#41444f")
-        self._add("FN", it)          # 实测会上报（usage 105），可点亮、可改键
-        self.fn_text = cv.create_text(259, 180, text="FN",
-                                      font=("Consolas", 8, "bold"), fill="#8a8f9c")
+        # FN 键：固件不上报，按下去没有任何数据，画出来只是为了还原实物。
+        # 不注册进 items，所以它不会被点亮，也不出现在改键列表里
+        round_rect(cv, 246, 170, 272, 190, 5, fill="#191b21", outline="#2b2e37")
+        cv.create_text(259, 180, text="FN", font=("Consolas", 8, "bold"),
+                       fill="#4a4e58")
 
         # 蓝色箭头 logo 键 = GUIDE
         cv.create_oval(292, 166, 324, 196, fill="", outline=P_LED, width=1)
@@ -210,7 +211,7 @@ class PadView:
                 base, lit = ABXY_COLORS[name]
                 col = lit if on else (C_HL if self.hl == name else base)
             else:
-                col = P_ABXY if name == "FN" else P_KNOB
+                col = P_KNOB
                 if on:
                     col = C_PRESS
                 elif self.hl == name:

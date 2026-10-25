@@ -26,7 +26,10 @@ val VIEW_MAP = TARGETS.associateBy { it.cg }
  * 说明：安卓 kernel 的 hid-input 把手柄按钮攒成 BTN_TRIGGER(0x120) 那一串，
  * 按 usage 顺序排：usage n -> 0x120 + (n-1)。
  * 所以 BTP-V1T 上 A=usage1 -> 0x120，B=usage2 -> 0x121，X=usage4 -> 0x123
- * ……FN=usage105 -> 0x188（这个超出上面那串，得 probe 才知道落在哪）。
+ * ……BACK=usage11 -> 0x12a，START=usage12 -> 0x12b（2026-10-25 与 PC 端对齐）。
+ * LOGO 键走的是消费页 usage 105，不在按钮位图里，安卓 hid-input 往往直接
+ * 丢掉它（不上报任何 event）—— 所以下面没有 LOGO 那一行，拿不到就别强求。
+ * FN 键固件不上报（PC 端实测），安卓上同样收不到，不用管它。
  * 万一机器之间的排列不一样，用改键面板改一下就行。
  */
 val DEFAULT_KEY = linkedMapOf(
@@ -36,9 +39,8 @@ val DEFAULT_KEY = linkedMapOf(
     0x124 to 0x134,   // Y
     0x126 to 0x136,   // LB
     0x127 to 0x137,   // RB
-    0x12f to 0x13a,   // BACK（返回）
-    0x12a to 0x13b,   // START（菜单）
-    0x12b to 0x13c,   // GUIDE（蓝色箭头）
+    0x12a to 0x13a,   // BACK（返回）
+    0x12b to 0x13b,   // START（菜单）
     0x12d to 0x13d,   // LS（左摇杆按下）
     0x12e to 0x13e,   // RS（右摇杆按下）
 )

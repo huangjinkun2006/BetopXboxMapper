@@ -35,13 +35,12 @@ HERE = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
         else os.path.dirname(os.path.abspath(__file__)))
 
 BTN_ORDER = ["Y", "X", "B", "A", "LB", "RB", "BACK", "START", "LS", "RS",
-             "GUIDE", "FN"]
+             "GUIDE"]
 BTN_CN = {"Y": "Y", "X": "X", "B": "B", "A": "A", "LB": "LB", "RB": "RB",
           "BACK": "BACK", "START": "START", "LS": "L3", "RS": "R3",
-          "GUIDE": "LOGO", "FN": "FN"}
-# FN 是这把的第 12 个实体键，Xbox 360 没有对应位，得指定它"冒充"哪个键
-FN_OUT_CHOICES = ["不映射", "Y", "X", "B", "A", "LB", "RB", "BACK", "START",
-                  "LS", "RS", "GUIDE"]
+          "GUIDE": "LOGO"}
+# 这把的 FN 键固件不上报（按了没数据），不进改键列表；
+# LOGO 键的 usage 是 105（2026-10-25 更正，之前被误记成 FN/GUIDE=12）
 
 # 托盘右键菜单 id
 T_SHOW, T_TOGGLE, T_ALARM, T_TEST, T_UPDATE, T_EXIT = 1, 2, 3, 4, 5, 6
@@ -398,20 +397,10 @@ class App:
             cell.grid(row=i // 2, column=i % 2, padx=3, pady=3, sticky="ew")
             tk.Label(cell, text=BTN_CN[name], font=("Consolas", 9, "bold"),
                      fg="#5a5e66", bg="#f4f5f8", width=5).pack(side="left")
-            if name == "FN":
-                # FN 没对应的 Xbox 键，这里改的是"FN 输出成什么"
-                self.fn_out_lbl = tk.Label(cell, text=self._fn_out_text(),
-                                           font=(FONT, 8), fg=C_SUB, bg="#f4f5f8")
-                self.fn_out_lbl.pack(side="left", padx=(0, 4))
-                lb = tk.Label(cell, text="改", font=(FONT, 8), fg=C_RED,
-                              bg="#f4f5f8", cursor="hand2", padx=4)
-                lb.pack(side="left")
-                lb.bind("<Button-1>", lambda e: self.pick_fn_out())
-            else:
-                lb = tk.Label(cell, text="改", font=(FONT, 8), fg=C_RED,
-                              bg="#f4f5f8", cursor="hand2", padx=4)
-                lb.pack(side="left")
-                lb.bind("<Button-1>", lambda e, n=name: self.rebind(n))
+            lb = tk.Label(cell, text="改", font=(FONT, 8), fg=C_RED,
+                          bg="#f4f5f8", cursor="hand2", padx=4)
+            lb.pack(side="left")
+            lb.bind("<Button-1>", lambda e, n=name: self.rebind(n))
         chips.columnconfigure(0, weight=1)
         chips.columnconfigure(1, weight=1)
 
@@ -550,8 +539,7 @@ class App:
             return
         try:
             self.dev = betop.open_device()
-            self.pad = betop.VirtualPad(rumble_callback=self.on_rumble,
-                                        fn_out=self.km.get("fn_out"))
+            self.pad = betop.VirtualPad(rumble_callback=self.on_rumble)
         except Exception as e:
             messagebox.showerror("启动失败", f"{e}\n\n确认 ViGEmBus 驱动装好了没")
             return
@@ -936,32 +924,6 @@ class App:
             cv.create_rectangle(mid, 2, mid + n, h - 2, fill=color, outline="")
         else:
             cv.create_rectangle(mid - n, 2, mid, h - 2, fill=color, outline="")
-
-    # ------------------------------------------------------------ FN 输出
-    def _fn_out_text(self):
-        v = self.km.get("fn_out")
-        return "→" + BTN_CN.get(v, v) if v else "→无"
-
-    def pick_fn_out(self):
-        w = self.fn_out_lbl
-        m = tk.Menu(self.root, tearoff=0)
-        cur = self.km.get("fn_out") or "不映射"
-        for c in FN_OUT_CHOICES:
-            m.add_command(label=("✓ " if c == cur else "　") + BTN_CN.get(c, c),
-                          command=lambda v=c: self.set_fn_out(v))
-        try:
-            m.tk_popup(w.winfo_rootx(), w.winfo_rooty() + w.winfo_height())
-        except Exception:
-            m.post(w.winfo_rootx(), w.winfo_rooty() + w.winfo_height())
-
-    def set_fn_out(self, v):
-        self.km["fn_out"] = None if v in (None, "不映射", "") else v
-        if getattr(self, "pad", None):
-            self.pad.BUTTON_MAP["FN"] = betop.VirtualPad.BUTTON_MAP.get(
-                self.km["fn_out"])
-        self.fn_out_lbl.config(text=self._fn_out_text())
-        self.status.set(f"FN 现在当 {BTN_CN.get(v, '不映射')} 用（记得保存）")
-        self._refresh_status()
 
     # ------------------------------------------------------------ 改键
     def rebind(self, name):

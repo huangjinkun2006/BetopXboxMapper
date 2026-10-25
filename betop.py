@@ -36,7 +36,7 @@ KEYMAP_PATH = os.path.join(HERE, "keymap.json")
 
 # Xbox 360 手柄的目标键位
 BUTTON_TARGETS = ["A", "B", "X", "Y", "LB", "RB", "BACK", "START",
-                  "LS", "RS", "GUIDE", "FN"]
+                  "LS", "RS", "GUIDE"]
 DPAD_TARGETS = ["UP", "DOWN", "LEFT", "RIGHT"]
 AXIS_TARGETS = ["LX", "LY", "RX", "RY", "LT", "RT"]
 
@@ -75,14 +75,14 @@ def default_keymap():
         "buttons": {
             "A": 1, "B": 2, "X": 4, "Y": 5,
             "LB": 7, "RB": 8,
-            # 实机核对（2026-10-24 用户逐键实测）：左上返回键发 usage 16，
-            # 右上菜单键发 11，蓝色箭头 LOGO 键发 12 —— 与 SDL 映射串错开一格
-            "BACK": 16, "START": 11,
+            # 中央三键（2026-10-25 定案）：左上角返回键 = 11、右上角菜单键 = 12
+            # （就是 SDL 映射串的 bit10 / bit11），蓝色箭头 LOGO 键 = 105
+            # （消费页 0x0C，走 byte4 的 bit7）。
+            # 之前把 105 当成 FN 是错的：FN 键固件压根不上报，按下去没有任何
+            # 数据，它已经从键位表里删掉了（界面里那个 FN 方块只是装饰）。
+            "BACK": 11, "START": 12,
             "LS": 14, "RS": 15,
-            "GUIDE": 12,
-            # 2026-10-24 实测抓包：FN 键真的会上报，走 byte4 的 bit7，
-            # HidP 解出来是 usage 105（不在 SDL 映射串里，所以之前一直没发现）
-            "FN": 105,
+            "GUIDE": 105,
         },
         "axes": {
             "LX": {"up": UP_GENERIC, "usage": U_X, "lo": 0, "hi": 255, "center": 128,
@@ -111,8 +111,18 @@ def load_keymap():
                 km.update(json.load(f))
         except Exception:
             pass
-    # 老配置文件没有 FN，补上（不然升级后 FN 又变摆设）
-    km.setdefault("buttons", {}).setdefault("FN", 105)
+    # 2026-10-25 更正：FN 键固件压根不上报，之前记的 usage 105 是 LOGO 键。
+    # 老配置里的 FN 直接丢掉（不然按 LOGO 会误点亮一个不存在的键），
+    # 顺手把记成 12 的 GUIDE 纠正成 105。
+    km.get("buttons", {}).pop("FN", None)
+    km.pop("fn_out", None)
+    km.setdefault("buttons", {})
+    # 老配置把中央三键记反过（BACK=16 / START=11 / GUIDE=12），这里纠正成
+    # 现在的定案值；LOGO 写成 12 或 16 的也统一改成 105
+    if km["buttons"].get("BACK") == 16 and km["buttons"].get("START") == 11:
+        km["buttons"]["BACK"], km["buttons"]["START"] = 11, 12
+    if km["buttons"].get("GUIDE") in (None, 12, 16):
+        km["buttons"]["GUIDE"] = 105
     return km
 
 
@@ -231,12 +241,21 @@ def parse_report(dev, report, km):
         pressed = {i + 1 for i in range(16)
                    if (report[3 + i // 8] >> (i % 8)) & 1}
         if len(report) > 4 and report[4] & 0x80:
-            pressed.add(105)          # FN 键（byte4 bit7）
+            pressed.add(105)          # LOGO 键（byte4 bit7）
 
     buttons = {}
     for tgt in BUTTON_TARGETS:
         usage = km["buttons"].get(tgt)
         buttons[tgt] = bool(usage) and usage in pressed
+
+    # LOGO 键兜底：固件实测发 105，老配置里还有写成 12 / 16 的，都试一下；
+    # 但已经被 BACK / START 占掉的 usage 不算，免得按 LOGO 串到别的键上
+    if not buttons.get("GUIDE"):
+        used = {km["buttons"].get("BACK"), km["buttons"].get("START")}
+        for u in (105, 12, 16):
+            if u not in used and u in pressed:
+                buttons["GUIDE"] = True
+                break
 
     hat_spec = km.get("hat", {})
     hv = dev.usage_value(report, hat_spec.get("up", 1), hat_spec.get("usage", U_HAT))
@@ -475,9 +494,6 @@ class VirtualPad:
         "RB": "XUSB_GAMEPAD_RIGHT_SHOULDER", "BACK": "XUSB_GAMEPAD_BACK",
         "START": "XUSB_GAMEPAD_START", "LS": "XUSB_GAMEPAD_LEFT_THUMB",
         "RS": "XUSB_GAMEPAD_RIGHT_THUMB", "GUIDE": "XUSB_GAMEPAD_GUIDE",
-        # FN 是这把多出来的第 12 个实体键，Xbox 360 没对应位，默认不映射；
-        # 想用的话在界面里把 FN 绑到任意 Xbox 键（写进 km["fn_out"]）
-        "FN": None,
         "UP": "XUSB_GAMEPAD_DPAD_UP", "DOWN": "XUSB_GAMEPAD_DPAD_DOWN",
         "LEFT": "XUSB_GAMEPAD_DPAD_LEFT", "RIGHT": "XUSB_GAMEPAD_DPAD_RIGHT",
     }
@@ -485,10 +501,8 @@ class VirtualPad:
     def __init__(self, rumble_callback=None, fn_out=None):
         import vgamepad as vg
         self.vg = vg
-        # 实例级副本：FN 可以单独改绑，别改到类上污染其它实例
+        # 实例级副本：改键时只改自己，别污染类上的那份
         self.BUTTON_MAP = dict(self.BUTTON_MAP)
-        if fn_out and self.BUTTON_MAP.get(fn_out):
-            self.BUTTON_MAP["FN"] = self.BUTTON_MAP[fn_out]
         self.pad = vg.VX360Gamepad()
         self._rumble_cb = rumble_callback
         if rumble_callback:
