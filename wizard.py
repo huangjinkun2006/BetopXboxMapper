@@ -19,8 +19,9 @@ except Exception:
     pass
 
 import betop
+import padui
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
-                   C_LINE, C_OK, C_HL, FONT, PadView, apply_icon)
+                   C_LINE, C_OK, C_HL, FONT, FT, S, PadView, apply_icon)
 
 import win11ui
 C_BG = win11ui.HOLE
@@ -46,9 +47,9 @@ class Wizard:
     def __init__(self, root):
         self.root = root
         root.title("键位识别向导 · 北通手柄")
-        root.geometry("940x650")
+        root.geometry("%dx%d" % (S(940), S(650)))
         root.resizable(True, True)
-        root.minsize(880, 600)
+        root.minsize(S(880), S(600))
         root.configure(bg=C_BG)
         apply_icon(root)
         win11ui.apply(root)
@@ -82,43 +83,43 @@ class Wizard:
         top = tk.Frame(self.root, bg=C_CARD)
         top.pack(fill="x")
         inner = tk.Frame(top, bg=C_CARD)
-        inner.pack(fill="x", padx=22, pady=11)
-        tk.Label(inner, text="键位识别向导", font=(FONT, 15, "bold"),
+        inner.pack(fill="x", padx=S(22), pady=S(11))
+        tk.Label(inner, text="键位识别向导", font=FT(15, "bold"),
                  fg=C_TEXT, bg=C_CARD).pack(side="left")
-        self.chip = tk.Label(inner, text="● 连接中", font=(FONT, 9), fg=C_SUB,
-                             bg="#f4f5f8", padx=10, pady=4)
-        self.chip.pack(side="left", padx=14)
-        tk.Label(inner, text="每键等待", font=(FONT, 9), fg=C_SUB,
+        self.chip = tk.Label(inner, text="● 连接中", font=FT(9), fg=C_SUB,
+                             bg="#f4f5f8", padx=S(10), pady=S(4))
+        self.chip.pack(side="left", padx=S(14))
+        tk.Label(inner, text="每键等待", font=FT(9), fg=C_SUB,
                  bg=C_CARD).pack(side="left")
         self.wait_var = tk.StringVar(value="10")
-        tk.Spinbox(inner, from_=3, to=60, width=3, font=(FONT, 9),
+        tk.Spinbox(inner, from_=3, to=60, width=3, font=FT(9),
                    textvariable=self.wait_var, relief="flat", bg="#f4f5f8",
                    buttonbackground="#e8e9ee", command=self._on_wait).pack(side="left",
                                                                             padx=(4, 0))
         self.wait_var.trace_add("write", lambda *_: self._on_wait())
-        tk.Label(inner, text="秒", font=(FONT, 9), fg=C_SUB,
+        tk.Label(inner, text="秒", font=FT(9), fg=C_SUB,
                  bg=C_CARD).pack(side="left", padx=(2, 12))
-        tk.Button(inner, text="完成并保存", font=(FONT, 10, "bold"), fg="white",
+        tk.Button(inner, text="完成并保存", font=FT(10, "bold"), fg="white",
                   bg=C_ACC, activebackground=C_ACC_DK, activeforeground="white",
-                  relief="flat", padx=18, pady=6, cursor="hand2",
+                  relief="flat", padx=S(18), pady=S(6), cursor="hand2",
                   command=self.finish).pack(side="right")
 
         row = tk.Frame(self.root, bg=C_BG)
-        row.pack(fill="both", expand=True, padx=18, pady=14)
+        row.pack(fill="both", expand=True, padx=S(18), pady=S(14))
 
         # 左：手柄图
         lc_card = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
         lc_card.pack(side="left")
         lc = lc_card.body
         hdr = tk.Frame(lc, bg=C_CARD)
-        hdr.pack(fill="x", padx=16, pady=(10, 2))
-        tk.Label(hdr, text="按住这个键", font=(FONT, 11, "bold"), fg=C_TEXT,
+        hdr.pack(fill="x", padx=S(16), pady=(S(10), S(2)))
+        tk.Label(hdr, text="按住这个键", font=FT(11, "bold"), fg=C_TEXT,
                  bg=C_CARD).pack(side="left")
-        tk.Label(hdr, text="橙色的就是要你按的键", font=(FONT, 8), fg=C_SUB,
-                 bg=C_CARD).pack(side="left", padx=8)
-        self.canvas = tk.Canvas(lc, width=560, height=370, bg=C_CARD,
+        tk.Label(hdr, text="橙色的就是要你按的键", font=FT(8), fg=C_SUB,
+                 bg=C_CARD).pack(side="left", padx=S(8))
+        self.canvas = tk.Canvas(lc, width=S(560), height=S(370), bg=C_CARD,
                                 highlightthickness=0)
-        self.canvas.pack(padx=8, pady=(2, 10))
+        self.canvas.pack(padx=S(8), pady=(S(2), S(10)))
         self.pv = PadView(self.canvas)
 
         # 手柄图跟着窗口缩放（同主界面的量化重绘策略）
@@ -158,36 +159,36 @@ class Wizard:
         rc_card = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=6)
         rc_card.pack(side="left", fill="both", expand=True, padx=(10, 0))
         rc = rc_card.body
-        tk.Label(rc, textvariable=self.prog, font=(FONT, 9), fg=C_SUB,
-                 bg=C_CARD).pack(anchor="w", padx=18, pady=(14, 2))
-        tk.Label(rc, textvariable=self.tip, font=(FONT, 13, "bold"), fg=C_TEXT,
-                 bg=C_CARD, wraplength=290, justify="left").pack(anchor="w", padx=18)
-        tk.Label(rc, textvariable=self.detail, font=(FONT, 9), fg=C_SUB,
-                 bg=C_CARD, wraplength=290, justify="left").pack(anchor="w",
-                                                                 padx=18, pady=(4, 6))
+        tk.Label(rc, textvariable=self.prog, font=FT(9), fg=C_SUB,
+                 bg=C_CARD).pack(anchor="w", padx=S(18), pady=(S(14), S(2)))
+        tk.Label(rc, textvariable=self.tip, font=FT(13, "bold"), fg=C_TEXT,
+                 bg=C_CARD, wraplength=S(290), justify="left").pack(anchor="w", padx=S(18))
+        tk.Label(rc, textvariable=self.detail, font=FT(9), fg=C_SUB,
+                 bg=C_CARD, wraplength=S(290), justify="left").pack(anchor="w",
+                                                                 padx=S(18), pady=(S(4), S(6)))
         # 倒计时
         cdr = tk.Frame(rc, bg=C_CARD)
-        cdr.pack(fill="x", padx=18, pady=(0, 6))
-        self.cd = tk.Label(cdr, text="", font=("Consolas", 20, "bold"),
+        cdr.pack(fill="x", padx=S(18), pady=(S(0), S(6)))
+        self.cd = tk.Label(cdr, text="", font=FT(20, "bold", family="Consolas"),
                            fg=C_HL, bg=C_CARD)
         self.cd.pack(side="left")
-        self.cdbar = tk.Canvas(cdr, width=150, height=8, bg="#f0f1f4",
+        self.cdbar = tk.Canvas(cdr, width=S(150), height=S(8), bg="#f0f1f4",
                                highlightthickness=0)
-        self.cdbar.pack(side="left", padx=10)
-        tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=16)
+        self.cdbar.pack(side="left", padx=S(10))
+        tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=S(16))
         btns = tk.Frame(rc, bg=C_CARD)
-        btns.pack(fill="x", padx=12, pady=10)
+        btns.pack(fill="x", padx=S(12), pady=S(10))
         for t, cmd in (("跳过此键", self.skip), ("再等一会", self.more_time),
                        ("重新开始", self.restart)):
-            tk.Button(btns, text=t, font=(FONT, 9), fg=C_TEXT, bg="#f4f5f8",
-                      activebackground="#e8e9ee", relief="flat", padx=9, pady=5,
+            tk.Button(btns, text=t, font=FT(9), fg=C_TEXT, bg="#f4f5f8",
+                      activebackground="#e8e9ee", relief="flat", padx=S(9), pady=S(5),
                       cursor="hand2", command=cmd).pack(side="left", padx=(0, 5))
-        tk.Label(rc, text="识别记录", font=(FONT, 9, "bold"), fg=C_TEXT,
-                 bg=C_CARD).pack(anchor="w", padx=18, pady=(6, 2))
-        self.logbox = tk.Text(rc, width=35, height=12, font=("Consolas", 9),
+        tk.Label(rc, text="识别记录", font=FT(9, "bold"), fg=C_TEXT,
+                 bg=C_CARD).pack(anchor="w", padx=S(18), pady=(S(6), S(2)))
+        self.logbox = tk.Text(rc, width=35, height=12, font=FT(9, family="Consolas"),
                               bg="#fafbfc", fg="#4a4e57", relief="flat",
                               highlightthickness=1, highlightbackground=C_LINE)
-        self.logbox.pack(padx=18, pady=(0, 14))
+        self.logbox.pack(padx=S(18), pady=(S(0), S(14)))
         self.logbox.configure(state="disabled")
 
     def _as_dict(self, pressed):
@@ -444,6 +445,11 @@ def main():
             except Exception:
                 pass
             sys.exit(1)
+    # 高分屏：必须在建窗口前声明 DPI 感知（padui 导入时也设过一次，双保险）
+    try:
+        padui.enable_dpi()
+    except Exception:
+        pass
     root = tk.Tk()
     Wizard(root)
     root.mainloop()

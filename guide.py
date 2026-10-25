@@ -11,7 +11,7 @@ from tkinter import messagebox
 
 import betop
 import hidraw
-from padui import PadView, round_rect, apply_icon
+from padui import PadView, round_rect, apply_icon, FT, S, SCALE
 
 FONT = "Microsoft YaHei UI"
 C_BG = "#f5f6f8"
@@ -22,7 +22,7 @@ C_OK = "#0f9d58"
 C_BLUE = "#1a73e8"
 C_RED = "#c0392b"
 
-W, H = 560, 370
+W, H = S(560), S(370)
 
 STEPS = [
     ("① 装 ViGEmBus 驱动", [
@@ -79,24 +79,24 @@ class Guide(tk.Toplevel):
         self.pad = None
         self._anim = None
         self.title("新手教程 · 八步把北通变成 Xbox 手柄")
-        self.geometry("820x740")
+        self.geometry("%dx%d" % (S(820), S(740)))
         self.configure(bg=C_BG)
         apply_icon(self)
         self.transient(app.root)
 
         head = tk.Frame(self, bg=C_BG)
-        head.pack(fill="x", padx=20, pady=(14, 6))
-        tk.Label(head, text="新手教程", font=(FONT, 15, "bold"),
+        head.pack(fill="x", padx=S(20), pady=(S(14), S(6)))
+        tk.Label(head, text="新手教程", font=FT(15, "bold"),
                  bg=C_BG).pack(anchor="w")
         tk.Label(head, text="按顺序走一遍就能玩上；左边点哪步看哪步",
-                 font=(FONT, 9), fg=C_SUB, bg=C_BG).pack(anchor="w", pady=(2, 0))
+                 font=FT(9), fg=C_SUB, bg=C_BG).pack(anchor="w", pady=(S(2), S(0)))
 
         body = tk.Frame(self, bg=C_BG)
-        body.pack(fill="both", expand=True, padx=20)
+        body.pack(fill="both", expand=True, padx=S(20))
 
         left = tk.Frame(body, bg=C_BG)
         left.pack(side="left", fill="y")
-        self.lst = tk.Listbox(left, font=(FONT, 10), height=9, width=22,
+        self.lst = tk.Listbox(left, font=FT(10), height=9, width=22,
                               relief="flat", bg="white",
                               highlightthickness=1,
                               highlightbackground=C_LINE,
@@ -133,28 +133,28 @@ class Guide(tk.Toplevel):
         self.scv.bind("<Configure>", lambda e:
                       self.scv.itemconfigure(self._scw, width=e.width))
 
-        self.title_lbl = tk.Label(inner, text="", font=(FONT, 12, "bold"),
+        self.title_lbl = tk.Label(inner, text="", font=FT(12, "bold"),
                                   bg=C_BG)
-        self.title_lbl.pack(anchor="w", pady=(10, 2))
-        self.text_lbl = tk.Label(inner, text="", font=(FONT, 10), fg="#444",
+        self.title_lbl.pack(anchor="w", pady=(S(10), S(2)))
+        self.text_lbl = tk.Label(inner, text="", font=FT(10), fg="#444",
                                  bg=C_BG, justify="left", wraplength=W)
         self.text_lbl.pack(anchor="w")
-        self.res_lbl = tk.Label(inner, text="", font=(FONT, 9), fg=C_SUB,
+        self.res_lbl = tk.Label(inner, text="", font=FT(9), fg=C_SUB,
                                 bg=C_BG, justify="left", wraplength=W)
-        self.res_lbl.pack(anchor="w", pady=(6, 0))
+        self.res_lbl.pack(anchor="w", pady=(S(6), S(0)))
 
         bar = tk.Frame(right, bg=C_BG)
-        bar.pack(fill="x", pady=(10, 0))
-        self.act = tk.Button(bar, text="", font=(FONT, 9, "bold"), fg="white",
-                             bg=C_OK, relief="flat", padx=10, pady=5,
+        bar.pack(fill="x", pady=(S(10), S(0)))
+        self.act = tk.Button(bar, text="", font=FT(9, "bold"), fg="white",
+                             bg=C_OK, relief="flat", padx=S(10), pady=S(5),
                              cursor="hand2", command=self.on_action)
         self.act.pack(side="left")
-        tk.Button(bar, text="← 上一步", font=(FONT, 9), relief="flat",
-                  bg="white", padx=8, pady=5,
+        tk.Button(bar, text="← 上一步", font=FT(9), relief="flat",
+                  bg="white", padx=S(8), pady=S(5),
                   command=lambda: self.go(-1)).pack(side="right")
-        tk.Button(bar, text="下一步 →", font=(FONT, 9), relief="flat",
-                  bg="white", padx=8, pady=5,
-                  command=lambda: self.go(1)).pack(side="right", padx=4)
+        tk.Button(bar, text="下一步 →", font=FT(9), relief="flat",
+                  bg="white", padx=S(8), pady=S(5),
+                  command=lambda: self.go(1)).pack(side="right", padx=S(4))
 
         self.bind("<Left>", lambda e: self.go(-1))
         self.bind("<Right>", lambda e: self.go(1))
@@ -216,6 +216,9 @@ class Guide(tk.Toplevel):
             self._anim_keys()
         else:
             getattr(self, "_d%d" % self.i)()
+            if SCALE != 1.0:
+                # 手画图示的坐标是 96 DPI 下写的，整组放大到当前 DPI
+                self.cv.scale("all", 0, 0, SCALE, SCALE)
 
     # ---------------------------------------------------------- 图示
     def _d0(self):
@@ -224,7 +227,7 @@ class Guide(tk.Toplevel):
         cv.create_rectangle(150, 70, 410, 100, fill="#dde3ea", outline="")
         for k, x in enumerate((166, 182, 198)):
             cv.create_oval(x, 80, x + 10, 90, fill="#c3cad4", outline="")
-        cv.create_text(280, 85, text="ViGEmBus Setup", font=(FONT, 9),
+        cv.create_text(280, 85, text="ViGEmBus Setup", font=FT(9),
                        fill="#5f6673")
         cv.create_polygon([280, 122, 328, 142, 328, 196, 280, 224, 232, 196,
                            232, 142], smooth=False, fill="#e6f1fb",
@@ -232,21 +235,21 @@ class Guide(tk.Toplevel):
         cv.create_line(262, 172, 276, 188, 302, 156, fill=C_OK, width=4,
                        capstyle="round", joinstyle="round")
         cv.create_text(280, 236, text="驱动装好后，系统里才能出现虚拟手柄",
-                       font=(FONT, 9), fill=C_SUB)
+                       font=FT(9), fill=C_SUB)
         cv.create_line(280, 258, 280, 286, fill="#b9c0cb", width=2,
                        arrow="last")
         round_rect(cv, 176, 292, 384, 336, 8, fill="#eaf3de", outline=C_OK)
         cv.create_text(280, 314, text="Xbox 360 手柄（虚拟）",
-                       font=(FONT, 10, "bold"), fill="#3B6D11")
+                       font=FT(10, "bold"), fill="#3B6D11")
 
     def _d1(self):
         cv = self.cv
         round_rect(cv, 60, 130, 210, 270, 10, fill="#eef1f5", outline="#cfd4dc")
         cv.create_rectangle(74, 144, 196, 244, fill="#2f343d", outline="")
-        cv.create_text(135, 262, text="电脑", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(135, 262, text="电脑", font=FT(9), fill=C_SUB)
         cv.create_line(210, 232, 258, 240, 300, 214, smooth=True,
                        fill="#5f6673", width=3)
-        cv.create_text(255, 258, text="USB", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(255, 258, text="USB", font=FT(9), fill=C_SUB)
         round_rect(cv, 320, 176, 480, 246, 34, fill="#3f4551", outline="")
         cv.create_polygon([320, 200, 300, 268, 330, 292, 360, 262, 372, 214],
                           smooth=True, fill="#3f4551", outline="")
@@ -255,12 +258,12 @@ class Guide(tk.Toplevel):
         cv.create_oval(348, 186, 380, 218, fill="#23272f", outline="")
         cv.create_oval(420, 202, 452, 234, fill="#23272f", outline="")
         cv.create_oval(392, 188, 408, 204, fill=C_OK, outline="")
-        cv.create_text(400, 168, text="灯亮 = 连上了", font=(FONT, 9),
+        cv.create_text(400, 168, text="灯亮 = 连上了", font=FT(9),
                        fill=C_OK)
         cv.create_text(400, 312, text="VID 20BC · 北通 BTP-V1T",
-                       font=(FONT, 10, "bold"), fill="#444")
+                       font=FT(10, "bold"), fill="#444")
         cv.create_text(400, 332, text="设备管理器里显示成 HID 手柄是正常的",
-                       font=(FONT, 9), fill=C_SUB)
+                       font=FT(9), fill=C_SUB)
 
     def _anim_keys(self):
         keys = ["A", "B", "X", "Y", "LB", "RB", "UP", "RIGHT", "DOWN",
@@ -281,23 +284,23 @@ class Guide(tk.Toplevel):
     def _d3(self):
         cv = self.cv
         self._mini_pad(cv, 90, 118, 0.9)
-        cv.create_text(112, 262, text="你的北通", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(112, 262, text="你的北通", font=FT(9), fill=C_SUB)
         cv.create_line(190, 190, 246, 190, fill=C_BLUE, width=2, arrow="last")
-        cv.create_text(218, 172, text="映射", font=(FONT, 9), fill=C_BLUE)
+        cv.create_text(218, 172, text="映射", font=FT(9), fill=C_BLUE)
         round_rect(cv, 252, 150, 400, 232, 10, fill="#e6f1fb", outline=C_BLUE)
-        cv.create_text(326, 178, text="Xbox 360 手柄", font=(FONT, 10, "bold"),
+        cv.create_text(326, 178, text="Xbox 360 手柄", font=FT(10, "bold"),
                        fill="#0C447C")
-        cv.create_text(326, 200, text="（ViGEm 虚拟）", font=(FONT, 9),
+        cv.create_text(326, 200, text="（ViGEm 虚拟）", font=FT(9),
                        fill=C_BLUE)
         cv.create_line(400, 190, 456, 190, fill=C_BLUE, width=2, arrow="last")
         round_rect(cv, 460, 150, 540, 232, 10, fill="#eaf3de", outline=C_OK)
-        cv.create_text(500, 178, text="游戏", font=(FONT, 10, "bold"),
+        cv.create_text(500, 178, text="游戏", font=FT(10, "bold"),
                        fill="#3B6D11")
-        cv.create_text(500, 200, text="只认 XInput", font=(FONT, 9), fill=C_OK)
+        cv.create_text(500, 200, text="只认 XInput", font=FT(9), fill=C_OK)
         cv.create_text(280, 300, text="游戏晃虚拟手柄 → 我们把它翻译成北通听得懂的命令",
-                       font=(FONT, 10), fill="#444")
+                       font=FT(10), fill="#444")
         cv.create_text(280, 324, text="反过来：你按北通 → 我们告诉虚拟手柄「A 被按下了」",
-                       font=(FONT, 9), fill=C_SUB)
+                       font=FT(9), fill=C_SUB)
 
     def _d4(self):
         """改键面板示意（对照主界面右下角那块）"""
@@ -305,7 +308,7 @@ class Guide(tk.Toplevel):
         # 面板卡片
         round_rect(cv, 168, 44, 392, 268, 10, fill="#f7f8fa", outline="#cfd4dc")
         cv.create_text(280, 64, text="改键（先启动映射）",
-                       font=(FONT, 10, "bold"), fill="#33373f")
+                       font=FT(10, "bold"), fill="#33373f")
         cv.create_line(182, 80, 378, 80, fill="#e2e5ea", width=1)
         # 两列键名 chip，BACK 那个高亮
         names = ["Y", "X", "B", "A", "LB", "RB", "BACK", "START", "L3", "R3"]
@@ -318,31 +321,31 @@ class Guide(tk.Toplevel):
                        fill=("#e6f1fb" if hot else "#f1f2f5"),
                        outline=(C_BLUE if hot else "#dcdfe5"))
             cv.create_text(x1 + 18, y1 + 11, text=nm, anchor="w",
-                           font=("Consolas", 9, "bold"),
+                           font=FT(9, "bold", family="Consolas"),
                            fill=("#0C447C" if hot else "#5a5e66"))
             cv.create_text(x2 - 18, y1 + 11, text="改",
-                           font=(FONT, 9), fill=(C_BLUE if hot else C_RED))
+                           font=FT(9), fill=(C_BLUE if hot else C_RED))
         cv.create_text(280, 246, text="…（LOGO 同样能改）",
-                       font=(FONT, 8), fill=C_SUB)
+                       font=FT(8), fill=C_SUB)
         # 箭头解释
         cv.create_line(118, 186, 182, 178, fill=C_BLUE, width=2, arrow="last")
-        cv.create_text(96, 200, text="点「改」", font=(FONT, 9), fill=C_BLUE)
+        cv.create_text(96, 200, text="点「改」", font=FT(9), fill=C_BLUE)
         cv.create_line(378, 186, 428, 176, fill=C_BLUE, width=2, arrow="last")
         cv.create_text(444, 168, text="再按手柄上\n想当它用的键",
-                       font=(FONT, 9), fill=C_BLUE, justify="left")
+                       font=FT(9), fill=C_BLUE, justify="left")
         cv.create_text(280, 298, text="按了 A 亮成别的键 / 手柄键位跟别人不一样，都用这里改",
-                       font=(FONT, 10), fill="#444")
+                       font=FT(10), fill="#444")
         # 底部：摇杆反向提示条
         round_rect(cv, 120, 318, 440, 350, 8, fill="#fdf3e7", outline="#e8a54b")
         cv.create_text(280, 334, text="摇杆上下反了？轴旁边的「反向」点一下就翻过来",
-                       font=(FONT, 9), fill="#8a5a13")
+                       font=FT(9), fill="#8a5a13")
 
     def _d5(self):
         cv = self.cv
         round_rect(cv, 120, 70, 440, 300, 10, fill="#eef1f5", outline="#cfd4dc")
         cv.create_rectangle(120, 70, 440, 100, fill="#dde3ea", outline="")
         cv.create_text(280, 85, text="Minecraft 基岩版 · 设置",
-                       font=(FONT, 9), fill="#5f6673")
+                       font=FT(9), fill="#5f6673")
         rows = [("控制器", True), ("设备：Xbox 360 手柄", True),
                 ("按键映射：默认", False), ("震动：开", False)]
         for k, (txt, on) in enumerate(rows):
@@ -351,9 +354,9 @@ class Guide(tk.Toplevel):
                        fill=("#e6f1fb" if on else "white"),
                        outline=(C_BLUE if on else C_LINE))
             cv.create_text(158, y + 19, text=txt, anchor="w",
-                           font=(FONT, 10), fill=("#0C447C" if on else "#444"))
+                           font=FT(10), fill=("#0C447C" if on else "#444"))
         cv.create_text(280, 330, text="顺序很重要：先启动映射，再开游戏",
-                       font=(FONT, 10, "bold"), fill=C_RED)
+                       font=FT(10, "bold"), fill=C_RED)
 
     def _d6(self):
         cv = self.cv
@@ -364,16 +367,16 @@ class Guide(tk.Toplevel):
                 y = 118 + k * 62 - amp * math.sin((x - 120) / 26.0)
                 pts += [x, y]
             cv.create_line(pts, fill=col, width=2, smooth=True)
-        cv.create_text(120, 250, text="震动强度", anchor="w", font=(FONT, 9),
+        cv.create_text(120, 250, text="震动强度", anchor="w", font=FT(9),
                        fill=C_SUB)
         round_rect(cv, 120, 268, 440, 278, 5, fill="#dfe1e6", outline="")
         cv.create_oval(372, 262, 396, 286, fill=C_BLUE, outline="")
-        cv.create_text(440, 274, text="300%", anchor="e", font=(FONT, 9),
+        cv.create_text(440, 274, text="300%", anchor="e", font=FT(9),
                        fill=C_BLUE)
         cv.create_text(280, 312, text="滑块往上拉 = 把游戏里的轻微震动放大",
-                       font=(FONT, 10), fill="#444")
+                       font=FT(10), fill="#444")
         cv.create_text(280, 336, text="完全不震就去实验室扫命令",
-                       font=(FONT, 9), fill=C_SUB)
+                       font=FT(9), fill=C_SUB)
 
     def _d7(self):
         """手机 → 局域网 → 电脑 → 手柄震一下"""
@@ -382,25 +385,25 @@ class Guide(tk.Toplevel):
         round_rect(cv, 62, 92, 152, 268, 12, fill="#eef1f5", outline="#cfd4dc")
         round_rect(cv, 70, 100, 144, 260, 6, fill="white", outline="")
         round_rect(cv, 76, 118, 138, 172, 8, fill="#e6f1fb", outline=C_BLUE)
-        cv.create_text(84, 128, text="微信", anchor="w", font=(FONT, 9),
+        cv.create_text(84, 128, text="微信", anchor="w", font=FT(9),
                        fill="#0C447C")
-        cv.create_text(84, 148, text="有新消息", anchor="w", font=(FONT, 9),
+        cv.create_text(84, 148, text="有新消息", anchor="w", font=FT(9),
                        fill="#444")
-        cv.create_text(107, 292, text="手机来通知", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(107, 292, text="手机来通知", font=FT(9), fill=C_SUB)
         # 请求
         cv.create_line(158, 175, 192, 175, arrow="last", fill=C_SUB, width=1.5)
-        cv.create_text(175, 160, text="/notify", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(175, 160, text="/notify", font=FT(9), fill=C_SUB)
         # 电脑
         round_rect(cv, 200, 108, 372, 226, 8, fill="#eef1f5", outline="#cfd4dc")
         round_rect(cv, 208, 116, 364, 208, 4, fill="white", outline="")
-        cv.create_text(286, 146, text="映射器 · 端口 9595", font=(FONT, 10),
+        cv.create_text(286, 146, text="映射器 · 端口 9595", font=FT(10),
                        fill="#5f6673")
         cv.create_text(286, 176, text="http://192.168.1.13:9595",
-                       font=(FONT, 9), fill=C_BLUE)
+                       font=FT(9), fill=C_BLUE)
         cv.create_polygon([266, 226, 306, 226, 316, 246, 256, 246],
                           fill="#dde3ea", outline="")
         round_rect(cv, 236, 246, 336, 254, 3, fill="#cfd4dc", outline="")
-        cv.create_text(286, 292, text="电脑收到请求", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(286, 292, text="电脑收到请求", font=FT(9), fill=C_SUB)
         # 手柄 + 震动波
         cv.create_line(378, 175, 412, 175, arrow="last", fill=C_SUB, width=1.5)
         self._mini_pad(cv, 470, 116, 0.62)
@@ -409,9 +412,9 @@ class Guide(tk.Toplevel):
                 cv.create_arc(470 - r, 178 - r, 470 + r, 178 + r,
                               start=st, extent=80, style="arc",
                               outline=C_OK, width=2)
-        cv.create_text(470, 292, text="手柄震一下", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(470, 292, text="手柄震一下", font=FT(9), fill=C_SUB)
         cv.create_text(280, 330, text="手机和电脑必须连同一个 WiFi",
-                       font=(FONT, 10, "bold"), fill=C_RED)
+                       font=FT(10, "bold"), fill=C_RED)
 
     @staticmethod
     def _mini_pad(cv, x, y, s):

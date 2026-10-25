@@ -17,7 +17,7 @@ from tkinter import messagebox
 
 import betop
 import hidraw
-from padui import apply_icon
+from padui import apply_icon, FT, S
 
 RID = 2
 FONT = "Microsoft YaHei UI"
@@ -68,7 +68,7 @@ class Lab(tk.Toplevel):
         self.on_apply = on_apply
         self.on_clear = on_clear
         self.title("震动实验室 · 找最猛的那条命令")
-        self.geometry("760x620")
+        self.geometry("%dx%d" % (S(760), S(620)))
         self.configure(bg="#f5f6f8")
         apply_icon(self)
         self.transient(master)
@@ -101,114 +101,114 @@ class Lab(tk.Toplevel):
     # ---------------------------------------------------------- 界面
     def _build(self, err):
         top = tk.Frame(self, bg="#f5f6f8")
-        top.pack(fill="x", padx=20, pady=(14, 0))
-        tk.Label(top, text="震动实验室", font=(FONT, 15, "bold"),
+        top.pack(fill="x", padx=S(20), pady=(S(14), S(0)))
+        tk.Label(top, text="震动实验室", font=FT(15, "bold"),
                  bg="#f5f6f8").pack(anchor="w")
         tk.Label(top, text="挨个发命令，感觉到震就按空格；记够 2 条就能开"
                            "「最强对决」两两比出冠军，冠军会直接写进配置。",
-                 font=(FONT, 9), fg="#666", bg="#f5f6f8",
-                 wraplength=700, justify="left").pack(anchor="w", pady=(2, 8))
+                 font=FT(9), fg="#666", bg="#f5f6f8",
+                 wraplength=S(700), justify="left").pack(anchor="w", pady=(S(2), S(8)))
 
         if err:
             tk.Label(self, text="通道打不开：" + err, fg="#c0392b",
-                     font=(FONT, 10), bg="#f5f6f8").pack(pady=30)
+                     font=FT(10), bg="#f5f6f8").pack(pady=S(30))
             return
 
         box = tk.Frame(self, bg="white", highlightthickness=1,
                        highlightbackground="#dfe1e6")
-        box.pack(fill="x", padx=20)
-        self.lbl_idx = tk.Label(box, text="", font=(FONT, 9), fg="#888",
+        box.pack(fill="x", padx=S(20))
+        self.lbl_idx = tk.Label(box, text="", font=FT(9), fg="#888",
                                 bg="white")
-        self.lbl_idx.pack(anchor="w", padx=14, pady=(10, 0))
-        self.lbl_cmd = tk.Label(box, text="", font=("Consolas", 13, "bold"),
+        self.lbl_idx.pack(anchor="w", padx=S(14), pady=(S(10), S(0)))
+        self.lbl_cmd = tk.Label(box, text="", font=FT(13, "bold", family="Consolas"),
                                 fg="#1a73e8", bg="white", justify="left")
-        self.lbl_cmd.pack(anchor="w", padx=14, pady=(2, 10))
+        self.lbl_cmd.pack(anchor="w", padx=S(14), pady=(S(2), S(10)))
 
         bar = tk.Frame(self, bg="#f5f6f8")
-        bar.pack(fill="x", padx=20, pady=(8, 0))
-        self.btn_run = tk.Button(bar, text="▶ 开始扫描", font=(FONT, 10, "bold"),
+        bar.pack(fill="x", padx=S(20), pady=(S(8), S(0)))
+        self.btn_run = tk.Button(bar, text="▶ 开始扫描", font=FT(10, "bold"),
                                  fg="white", bg="#1a73e8", relief="flat",
-                                 padx=12, pady=5, cursor="hand2",
+                                 padx=S(12), pady=S(5), cursor="hand2",
                                  command=self.toggle_run)
         self.btn_run.pack(side="left")
-        tk.Button(bar, text="⏮ 上一个", font=(FONT, 9), relief="flat",
-                  bg="white", padx=8, pady=5, command=lambda: self.jump(-1)
-                  ).pack(side="left", padx=5)
-        tk.Button(bar, text="下一个 ⏭", font=(FONT, 9), relief="flat",
-                  bg="white", padx=8, pady=5, command=lambda: self.jump(1)
+        tk.Button(bar, text="⏮ 上一个", font=FT(9), relief="flat",
+                  bg="white", padx=S(8), pady=S(5), command=lambda: self.jump(-1)
+                  ).pack(side="left", padx=S(5))
+        tk.Button(bar, text="下一个 ⏭", font=FT(9), relief="flat",
+                  bg="white", padx=S(8), pady=S(5), command=lambda: self.jump(1)
                   ).pack(side="left")
-        tk.Button(bar, text="🔁 震这条 1.5 秒", font=(FONT, 9), relief="flat",
-                  bg="white", padx=8, pady=5, command=self.play_once
-                  ).pack(side="left", padx=5)
-        tk.Button(bar, text="♾ 一直震", font=(FONT, 9), relief="flat",
-                  bg="#8e44ad", fg="white", padx=8, pady=5,
+        tk.Button(bar, text="🔁 震这条 1.5 秒", font=FT(9), relief="flat",
+                  bg="white", padx=S(8), pady=S(5), command=self.play_once
+                  ).pack(side="left", padx=S(5))
+        tk.Button(bar, text="♾ 一直震", font=FT(9), relief="flat",
+                  bg="#8e44ad", fg="white", padx=S(8), pady=S(5),
                   command=lambda: self.hold(True)).pack(side="left")
-        tk.Button(bar, text="⏹ 停止震动", font=(FONT, 9, "bold"), fg="#c0392b",
-                  bg="#fdecea", relief="flat", padx=8, pady=5,
-                  command=lambda: self.hold(False)).pack(side="left", padx=5)
+        tk.Button(bar, text="⏹ 停止震动", font=FT(9, "bold"), fg="#c0392b",
+                  bg="#fdecea", relief="flat", padx=S(8), pady=S(5),
+                  command=lambda: self.hold(False)).pack(side="left", padx=S(5))
         ch = tk.Frame(self, bg="#f5f6f8")
-        ch.pack(fill="x", padx=20, pady=(6, 0))
-        tk.Label(ch, text="通道：", font=(FONT, 9), bg="#f5f6f8").pack(
+        ch.pack(fill="x", padx=S(20), pady=(S(6), S(0)))
+        tk.Label(ch, text="通道：", font=FT(9), bg="#f5f6f8").pack(
             side="left")
         for v in ("WriteFile", "SET_REPORT"):
             tk.Radiobutton(ch, text=v, variable=self.chan, value=v,
-                           font=(FONT, 9), bg="#f5f6f8",
+                           font=FT(9), bg="#f5f6f8",
                            command=self.show).pack(side="left")
 
-        tk.Button(self, text="有感觉！（空格）", font=(FONT, 12, "bold"),
-                  fg="white", bg="#0f9d58", relief="flat", padx=14, pady=7,
-                  cursor="hand2", command=self.mark).pack(pady=(10, 0))
+        tk.Button(self, text="有感觉！（空格）", font=FT(12, "bold"),
+                  fg="white", bg="#0f9d58", relief="flat", padx=S(14), pady=S(7),
+                  cursor="hand2", command=self.mark).pack(pady=(S(10), S(0)))
 
         # 最强对决
         dbar = tk.Frame(self, bg="#f5f6f8")
-        dbar.pack(fill="x", padx=20, pady=(8, 0))
+        dbar.pack(fill="x", padx=S(20), pady=(S(8), S(0)))
         self.btn_duel = tk.Button(dbar, text="🏆 最强对决（两两比出冠军）",
-                                  font=(FONT, 10, "bold"), fg="white",
-                                  bg="#e37400", relief="flat", padx=10,
-                                  pady=5, cursor="hand2",
+                                  font=FT(10, "bold"), fg="white",
+                                  bg="#e37400", relief="flat", padx=S(10),
+                                  pady=S(5), cursor="hand2",
                                   command=self.start_duel)
         self.btn_duel.pack(side="left")
-        self.duel_lbl = tk.Label(dbar, text="", font=(FONT, 9),
+        self.duel_lbl = tk.Label(dbar, text="", font=FT(9),
                                  fg="#e37400", bg="#f5f6f8",
-                                 wraplength=430, justify="left")
-        self.duel_lbl.pack(side="left", padx=8)
+                                 wraplength=S(430), justify="left")
+        self.duel_lbl.pack(side="left", padx=S(8))
         dbar2 = tk.Frame(self, bg="#f5f6f8")
-        dbar2.pack(fill="x", padx=20, pady=(4, 0))
-        self.btn_a = tk.Button(dbar2, text="A 更猛", font=(FONT, 10, "bold"),
+        dbar2.pack(fill="x", padx=S(20), pady=(S(4), S(0)))
+        self.btn_a = tk.Button(dbar2, text="A 更猛", font=FT(10, "bold"),
                                fg="white", bg="#1a73e8", relief="flat",
-                               padx=12, pady=5, state="disabled",
+                               padx=S(12), pady=S(5), state="disabled",
                                command=lambda: self._duel_pick("a"))
         self.btn_a.pack(side="left")
-        self.btn_b = tk.Button(dbar2, text="B 更猛", font=(FONT, 10, "bold"),
+        self.btn_b = tk.Button(dbar2, text="B 更猛", font=FT(10, "bold"),
                                fg="white", bg="#0f9d58", relief="flat",
-                               padx=12, pady=5, state="disabled",
+                               padx=S(12), pady=S(5), state="disabled",
                                command=lambda: self._duel_pick("b"))
-        self.btn_b.pack(side="left", padx=6)
-        self.btn_eq = tk.Button(dbar2, text="差不多，跳过", font=(FONT, 9),
-                                relief="flat", bg="white", padx=8, pady=5,
+        self.btn_b.pack(side="left", padx=S(6))
+        self.btn_eq = tk.Button(dbar2, text="差不多，跳过", font=FT(9),
+                                relief="flat", bg="white", padx=S(8), pady=S(5),
                                 state="disabled",
                                 command=lambda: self._duel_pick("eq"))
         self.btn_eq.pack(side="left")
-        self.btn_quit = tk.Button(dbar2, text="结束对决", font=(FONT, 9),
-                                  relief="flat", bg="white", padx=8, pady=5,
+        self.btn_quit = tk.Button(dbar2, text="结束对决", font=FT(9),
+                                  relief="flat", bg="white", padx=S(8), pady=S(5),
                                   state="disabled", command=self._end_duel)
-        self.btn_quit.pack(side="left", padx=6)
+        self.btn_quit.pack(side="left", padx=S(6))
 
         hdr = tk.Frame(self, bg="#f5f6f8")
-        hdr.pack(fill="x", padx=20, pady=(8, 0))
-        tk.Label(hdr, text="记录：", font=(FONT, 9, "bold"),
+        hdr.pack(fill="x", padx=S(20), pady=(S(8), S(0)))
+        tk.Label(hdr, text="记录：", font=FT(9, "bold"),
                  bg="#f5f6f8").pack(side="left")
-        self.hit_lbl = tk.Label(hdr, text="", font=(FONT, 8), fg="#888",
+        self.hit_lbl = tk.Label(hdr, text="", font=FT(8), fg="#888",
                                 bg="#f5f6f8")
-        self.hit_lbl.pack(side="left", padx=2)
-        tk.Button(hdr, text="🗑 清空全部", font=(FONT, 8), relief="flat",
-                  bg="#fdecea", fg="#c0392b", padx=8, pady=2, cursor="hand2",
+        self.hit_lbl.pack(side="left", padx=S(2))
+        tk.Button(hdr, text="🗑 清空全部", font=FT(8), relief="flat",
+                  bg="#fdecea", fg="#c0392b", padx=S(8), pady=S(2), cursor="hand2",
                   command=self.clear_hits).pack(side="right")
-        tk.Button(hdr, text="✕ 删选中", font=(FONT, 8), relief="flat",
-                  bg="white", padx=8, pady=2, cursor="hand2",
-                  command=self.del_sel).pack(side="right", padx=4)
-        self.lst = tk.Listbox(self, font=("Consolas", 9), height=8)
-        self.lst.pack(fill="both", padx=20, pady=(2, 10), expand=True)
+        tk.Button(hdr, text="✕ 删选中", font=FT(8), relief="flat",
+                  bg="white", padx=S(8), pady=S(2), cursor="hand2",
+                  command=self.del_sel).pack(side="right", padx=S(4))
+        self.lst = tk.Listbox(self, font=FT(9, family="Consolas"), height=8)
+        self.lst.pack(fill="both", padx=S(20), pady=(S(2), S(10)), expand=True)
         self._refresh_lst()
         self.bind("<Delete>", lambda e: self.del_sel())
 

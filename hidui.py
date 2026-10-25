@@ -21,7 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 import hidhide
 
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
-                   C_LINE, C_OK, FONT, apply_icon)
+                   C_LINE, C_OK, FONT, FT, S, apply_icon)
 
 C_GREEN = C_OK
 
@@ -73,7 +73,7 @@ def app_label(path):
 class HidHideDialog:
     """设备屏蔽的完整设置窗口（替代官方 HidHide Configuration Client）"""
 
-    W, H = 780, 600
+    W, H = S(780), S(600)
 
     def __init__(self, root, app=None):
         self.root = root
@@ -88,7 +88,7 @@ class HidHideDialog:
         self.win.title("🛡 设备屏蔽 · HidHide 设置")
         self.win.configure(bg=C_BG)
         self.win.geometry("%dx%d" % (self.W, self.H))
-        self.win.minsize(700, 520)
+        self.win.minsize(S(700), S(520))
         self.win.transient(root)
         try:
             apply_icon(self.win)
@@ -104,44 +104,44 @@ class HidHideDialog:
         # 标题
         top = tk.Frame(self.win, bg=C_CARD, highlightthickness=1,
                        highlightbackground=C_LINE)
-        top.pack(fill="x", padx=14, pady=(12, 8))
-        tk.Label(top, text="🛡  设备屏蔽（HidHide）", font=(FONT, 13, "bold"),
-                 fg=C_TEXT, bg=C_CARD).pack(side="left", padx=14, pady=10)
+        top.pack(fill="x", padx=S(14), pady=(S(12), S(8)))
+        tk.Label(top, text="🛡  设备屏蔽（HidHide）", font=FT(13, "bold"),
+                 fg=C_TEXT, bg=C_CARD).pack(side="left", padx=S(14), pady=S(10))
         tk.Label(top, text="游戏里只剩虚拟 Xbox 那一把的关键",
-                 font=(FONT, 8), fg=C_SUB, bg=C_CARD).pack(side="left")
+                 font=FT(8), fg=C_SUB, bg=C_CARD).pack(side="left")
 
         # 状态卡
         st = tk.Frame(self.win, bg=C_CARD, highlightthickness=1,
                       highlightbackground=C_LINE)
-        st.pack(fill="x", padx=14, pady=(0, 8))
-        self.lbl_drv = tk.Label(st, text="驱动：检查中…", font=(FONT, 9),
+        st.pack(fill="x", padx=S(14), pady=(S(0), S(8)))
+        self.lbl_drv = tk.Label(st, text="驱动：检查中…", font=FT(9),
                                 fg=C_SUB, bg=C_CARD)
-        self.lbl_drv.pack(anchor="w", padx=14, pady=(10, 2))
+        self.lbl_drv.pack(anchor="w", padx=S(14), pady=(S(10), S(2)))
         row1 = tk.Frame(st, bg=C_CARD)
-        row1.pack(fill="x", padx=14, pady=(2, 4))
-        self.lbl_cloak = tk.Label(row1, text="总开关：检查中…", font=(FONT, 9),
+        row1.pack(fill="x", padx=S(14), pady=(S(2), S(4)))
+        self.lbl_cloak = tk.Label(row1, text="总开关：检查中…", font=FT(9),
                                   fg=C_SUB, bg=C_CARD)
         self.lbl_cloak.pack(side="left")
-        self.btn_cloak = tk.Button(row1, text="启用", font=(FONT, 8),
+        self.btn_cloak = tk.Button(row1, text="启用", font=FT(8),
                                    bg=C_ACC_LT, fg="#fff", relief="flat",
-                                   padx=12, pady=2, cursor="hand2",
+                                   padx=S(12), pady=S(2), cursor="hand2",
                                    command=self.toggle_cloak)
         self.btn_cloak.pack(side="right")
 
         row2 = tk.Frame(st, bg=C_CARD)
-        row2.pack(fill="x", padx=14, pady=(0, 10))
-        self.lbl_pad = tk.Label(row2, text="当前手柄：检查中…", font=(FONT, 9),
+        row2.pack(fill="x", padx=S(14), pady=(S(0), S(10)))
+        self.lbl_pad = tk.Label(row2, text="当前手柄：检查中…", font=FT(9),
                                 fg=C_SUB, bg=C_CARD)
         self.lbl_pad.pack(side="left")
-        self.btn_pad = tk.Button(row2, text="屏蔽它", font=(FONT, 8),
+        self.btn_pad = tk.Button(row2, text="屏蔽它", font=FT(8),
                                  bg=C_ACC_LT, fg="#fff", relief="flat",
-                                 padx=12, pady=2, cursor="hand2",
+                                 padx=S(12), pady=S(2), cursor="hand2",
                                  command=self.toggle_pad)
         self.btn_pad.pack(side="right")
 
         # 两个名单
         nb = ttk.Notebook(self.win)
-        nb.pack(fill="both", expand=True, padx=14, pady=(0, 6))
+        nb.pack(fill="both", expand=True, padx=S(14), pady=(S(0), S(6)))
 
         f1 = tk.Frame(nb, bg=C_BG)
         nb.add(f1, text="  隐藏的设备（黑名单）  ")
@@ -154,29 +154,29 @@ class HidHideDialog:
         # 底部
         bot = tk.Frame(self.win, bg=C_CARD, highlightthickness=1,
                        highlightbackground=C_LINE)
-        bot.pack(fill="x", padx=14, pady=(0, 12))
+        bot.pack(fill="x", padx=S(14), pady=(S(0), S(12)))
         tk.Label(bot, text="白名单 = 看得见被隐藏设备的程序（映射器必须在里面）；"
                           "黑名单 = 对所有其它程序隐身的 HID 设备",
-                 font=(FONT, 8), fg=C_SUB, bg=C_CARD,
-                 wraplength=560, justify="left").pack(side="left", padx=12,
-                                                      pady=8)
-        tk.Button(bot, text="官方客户端", font=(FONT, 8), bg="#f0f1f4",
-                  fg=C_TEXT, relief="flat", padx=10, pady=2, cursor="hand2",
+                 font=FT(8), fg=C_SUB, bg=C_CARD,
+                 wraplength=S(560), justify="left").pack(side="left", padx=S(12),
+                                                      pady=S(8))
+        tk.Button(bot, text="官方客户端", font=FT(8), bg="#f0f1f4",
+                  fg=C_TEXT, relief="flat", padx=S(10), pady=S(2), cursor="hand2",
                   command=self.open_official).pack(side="right", padx=(0, 6))
-        tk.Button(bot, text="刷新", font=(FONT, 8), bg=C_ACC, fg="#fff",
-                  relief="flat", padx=12, pady=2, cursor="hand2",
+        tk.Button(bot, text="刷新", font=FT(8), bg=C_ACC, fg="#fff",
+                  relief="flat", padx=S(12), pady=S(2), cursor="hand2",
                   command=self.refresh).pack(side="right", padx=(0, 4))
 
-        self.bar = tk.Label(self.win, text="", font=(FONT, 8), fg=C_SUB,
+        self.bar = tk.Label(self.win, text="", font=FT(8), fg=C_SUB,
                             bg=C_BG)
-        self.bar.pack(anchor="w", padx=16, pady=(0, 8))
+        self.bar.pack(anchor="w", padx=S(16), pady=(S(0), S(8)))
 
     def _mk_list(self, parent):
         wrap = tk.Frame(parent, bg=C_BG)
-        wrap.pack(fill="both", expand=True, padx=10, pady=(10, 4))
+        wrap.pack(fill="both", expand=True, padx=S(10), pady=(S(10), S(4)))
         sb = tk.Scrollbar(wrap)
         sb.pack(side="right", fill="y")
-        lb = tk.Listbox(wrap, font=("Consolas", 9), bg="#fff", fg=C_TEXT,
+        lb = tk.Listbox(wrap, font=FT(9, family="Consolas"), bg="#fff", fg=C_TEXT,
                         selectbackground=C_ACC_LT, relief="flat",
                         highlightthickness=1, highlightbackground=C_LINE,
                         yscrollcommand=sb.set, selectmode="extended",
@@ -187,38 +187,38 @@ class HidHideDialog:
 
     def _build_dev_tab(self, f):
         tip = tk.Frame(f, bg=C_BG)
-        tip.pack(fill="x", padx=10, pady=(8, 0))
+        tip.pack(fill="x", padx=S(10), pady=(S(8), S(0)))
         tk.Label(tip, text="● = 现在插着  ○ = 记着但没插   选中可多选",
-                 font=(FONT, 8), fg=C_SUB, bg=C_BG).pack(side="left")
+                 font=FT(8), fg=C_SUB, bg=C_BG).pack(side="left")
         self.dev_lb = self._mk_list(f)
         bar = tk.Frame(f, bg=C_BG)
-        bar.pack(fill="x", padx=10, pady=(0, 8))
+        bar.pack(fill="x", padx=S(10), pady=(S(0), S(8)))
         for txt, cmd in (("🧹 清空", self.dev_clear),
                          ("➖ 移除选中", self.dev_rem),
                          ("🎮 加当前手柄", self.dev_add_cur),
                          ("📁 手动加…", self.dev_add_manual)):
-            tk.Button(bar, text=txt, font=(FONT, 8), bg="#f0f1f4", fg=C_TEXT,
-                      relief="flat", padx=8, pady=3, cursor="hand2",
+            tk.Button(bar, text=txt, font=FT(8), bg="#f0f1f4", fg=C_TEXT,
+                      relief="flat", padx=S(8), pady=S(3), cursor="hand2",
                       command=cmd).pack(side="left", padx=(0, 4))
 
     def _build_app_tab(self, f):
         tip = tk.Frame(f, bg=C_BG)
-        tip.pack(fill="x", padx=10, pady=(8, 0))
+        tip.pack(fill="x", padx=S(10), pady=(S(8), S(0)))
         tk.Label(tip, text="不在白名单的程序 = 看不到任何被隐藏的设备",
-                 font=(FONT, 8), fg=C_SUB, bg=C_BG).pack(side="left")
+                 font=FT(8), fg=C_SUB, bg=C_BG).pack(side="left")
         self.app_lb = self._mk_list(f)
         bar = tk.Frame(f, bg=C_BG)
-        bar.pack(fill="x", padx=10, pady=(0, 8))
+        bar.pack(fill="x", padx=S(10), pady=(S(0), S(8)))
         for txt, cmd in (("➕ 加程序…", self.app_add_file),
                          ("🕹 加映射器自己", self.app_add_me),
                          ("➖ 移除选中", self.app_rem)):
-            tk.Button(bar, text=txt, font=(FONT, 8), bg="#f0f1f4", fg=C_TEXT,
-                      relief="flat", padx=8, pady=3, cursor="hand2",
+            tk.Button(bar, text=txt, font=FT(8), bg="#f0f1f4", fg=C_TEXT,
+                      relief="flat", padx=S(8), pady=S(3), cursor="hand2",
                       command=cmd).pack(side="left", padx=(0, 4))
         tk.Label(f, text="提示：CLI 遇到中文路径会显示成乱码或被截断，实际已写进"
                          "驱动。添加后刷新列表若看不到完整路径不用慌。",
-                 font=(FONT, 8), fg=C_SUB, bg=C_BG, wraplength=700,
-                 justify="left").pack(anchor="w", padx=12, pady=(0, 8))
+                 font=FT(8), fg=C_SUB, bg=C_BG, wraplength=S(700),
+                 justify="left").pack(anchor="w", padx=S(12), pady=(S(0), S(8)))
 
     # ------------------------------------------------------------ 线程壳
     def _busy(self, text):
@@ -320,7 +320,7 @@ class HidHideDialog:
         """危险动作红色（要藏）、恢复动作绿色（要放）"""
         btn.config(text=label,
                    bg=C_ACC if danger else C_OK, fg="#fff",
-                   font=(FONT, 8, "bold"))
+                   font=FT(8, "bold"))
 
     def _fill_lists(self):
         self.dev_lb.delete(0, "end")
@@ -335,9 +335,9 @@ class HidHideDialog:
             return
         self._has_install_btn = True
         tk.Button(self.win, text="⬇ 安装 HidHide 驱动（要 UAC）",
-                  font=(FONT, 9, "bold"), bg=C_ACC, fg="#fff", relief="flat",
-                  padx=14, pady=4, cursor="hand2",
-                  command=self.do_install).pack(pady=(0, 10))
+                  font=FT(9, "bold"), bg=C_ACC, fg="#fff", relief="flat",
+                  padx=S(14), pady=S(4), cursor="hand2",
+                  command=self.do_install).pack(pady=(S(0), S(10)))
 
     # ------------------------------------------------------------ 写操作
     def _write(self, args, verify, ok_text, fail_text):
@@ -646,7 +646,7 @@ class PickHidDialog:
         self.win = tk.Toplevel(parent)
         self.win.title("选择要隐藏的 HID 设备")
         self.win.configure(bg=C_BG)
-        self.win.geometry("720x460")
+        self.win.geometry("%dx%d" % (S(720), S(460)))
         self.win.transient(parent)
         self.win.grab_set()
         try:
@@ -654,13 +654,13 @@ class PickHidDialog:
         except Exception:
             pass
 
-        tk.Label(self.win, text="勾选要隐藏的设备（可以多选）：", font=(FONT, 9),
-                 fg=C_TEXT, bg=C_BG).pack(anchor="w", padx=12, pady=(10, 4))
+        tk.Label(self.win, text="勾选要隐藏的设备（可以多选）：", font=FT(9),
+                 fg=C_TEXT, bg=C_BG).pack(anchor="w", padx=S(12), pady=(S(10), S(4)))
         wrap = tk.Frame(self.win, bg=C_BG)
-        wrap.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        wrap.pack(fill="both", expand=True, padx=S(12), pady=(S(0), S(6)))
         sb = tk.Scrollbar(wrap)
         sb.pack(side="right", fill="y")
-        self.lb = tk.Listbox(wrap, font=("Consolas", 9), bg="#fff",
+        self.lb = tk.Listbox(wrap, font=FT(9, family="Consolas"), bg="#fff",
                              fg=C_TEXT, relief="flat", highlightthickness=1,
                              highlightbackground=C_LINE, selectmode="multiple",
                              yscrollcommand=sb.set, activestyle="none")
@@ -670,12 +670,12 @@ class PickHidDialog:
             self.lb.insert("end", "%-40s %s" % (name[:38], iid))
 
         bar = tk.Frame(self.win, bg=C_BG)
-        bar.pack(fill="x", padx=12, pady=(0, 10))
-        tk.Button(bar, text="确定隐藏", font=(FONT, 9, "bold"), bg=C_ACC,
-                  fg="#fff", relief="flat", padx=14, pady=3, cursor="hand2",
+        bar.pack(fill="x", padx=S(12), pady=(S(0), S(10)))
+        tk.Button(bar, text="确定隐藏", font=FT(9, "bold"), bg=C_ACC,
+                  fg="#fff", relief="flat", padx=S(14), pady=S(3), cursor="hand2",
                   command=self._ok).pack(side="right", padx=(6, 0))
-        tk.Button(bar, text="取消", font=(FONT, 9), bg="#f0f1f4", fg=C_TEXT,
-                  relief="flat", padx=14, pady=3, cursor="hand2",
+        tk.Button(bar, text="取消", font=FT(9), bg="#f0f1f4", fg=C_TEXT,
+                  relief="flat", padx=S(14), pady=S(3), cursor="hand2",
                   command=self.win.destroy).pack(side="right")
 
     def _ok(self):

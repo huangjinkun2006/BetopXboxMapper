@@ -11,6 +11,7 @@
 按下 = 贴"提亮+绿染"版本并下沉 1px，向导待按 = 琥珀染。
 顶部 LT/LB/RT/RB 用俯视图裁的实物图，扳机随扣动深度下压。
 """
+import ctypes
 import math
 import os
 import sys
@@ -38,6 +39,59 @@ P_LED     = "#3f7dff"
 P_ABXY    = "#17181f"
 
 FONT = "Microsoft YaHei"
+
+
+# ---- 高分屏缩放（v1.0.31）----
+# 锦坤的屏幕是 150% 缩放（144 DPI）。Tk 只有在建窗口*之前*就声明 DPI 感知，
+# 才会按真实 DPI 初始化；等 tk.Tk() 建完再调 SetProcessDpiAwareness 已经晚了——
+# Tk 仍按 96 DPI 算字体（9pt = 12px），在 144 DPI 的屏上物理尺寸只有正常的 2/3，
+# 字看着特别小。所以这里在模块导入时（所有 GUI 入口都在建 Tk 前 import 了本模块）
+# 就先把 awareness 设好，再按 DPI 算出全局缩放系数，字体/像素尺寸全部乘它。
+def enable_dpi():
+    """声明进程 DPI 感知。必须在 tk.Tk() 之前调用（导入本模块时会自动调一次）。"""
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)   # PerMonitorAware
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()        # 老系统兜底
+    except Exception:
+        pass
+
+
+def _system_dpi():
+    try:
+        return int(ctypes.windll.user32.GetDpiForSystem())
+    except Exception:
+        pass
+    try:
+        hdc = ctypes.windll.user32.GetDC(0)
+        try:
+            return int(ctypes.windll.gdi32.GetDeviceCaps(hdc, 88))  # LOGPIXELSX
+        finally:
+            ctypes.windll.user32.ReleaseDC(0, hdc)
+    except Exception:
+        return 96
+
+
+enable_dpi()                      # 导入即生效，重复调用无害（第二次会被系统拒绝）
+DPI = _system_dpi()
+SCALE = DPI / 96.0
+if SCALE < 1.0:
+    SCALE = 1.0
+elif SCALE > 3.0:
+    SCALE = 3.0
+
+
+def FT(size, weight="normal", family=None):
+    """按系统 DPI 缩放的字体。size 按 96 DPI 下的磅值写，出来自动换算。"""
+    return (family or FONT, max(6, int(round(size * SCALE))), weight)
+
+
+def S(px):
+    """按系统 DPI 缩放的像素值（窗口尺寸/画布/内边距都用它包一层）。"""
+    return int(round(px * SCALE))
 
 
 def _rr_pts(x1, y1, x2, y2, r):

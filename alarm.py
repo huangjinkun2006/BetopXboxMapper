@@ -11,6 +11,7 @@ import threading
 import time
 
 import betop
+from padui import FT, S
 
 try:
     import tkinter as tk
@@ -399,7 +400,7 @@ if tk is not None:
     class AlarmDialog(tk.Toplevel):
         """震动闹钟设置窗"""
 
-        W, H = 420, 486
+        W, H = S(420), S(486)
 
         def __init__(self, master, app):
             super().__init__(master)
@@ -435,23 +436,24 @@ if tk is not None:
                 self.geometry("%dx%d" % (self.W, self.H))
 
         def _build(self):
+            from padui import FT, S
             FONT = "Microsoft YaHei UI"
             hd = tk.Frame(self, bg="#fff", height=64)
             hd.pack(fill="x")
             hd.pack_propagate(False)
-            tk.Label(hd, text="⏰  震动闹钟", font=(FONT, 15, "bold"),
-                     fg="#22252b", bg="#fff").pack(side="left", padx=22)
-            tk.Label(hd, text="到点震 · 按任意键停", font=(FONT, 9),
-                     fg="#8a8f99", bg="#fff").pack(side="right", padx=22)
+            tk.Label(hd, text="⏰  震动闹钟", font=FT(15, "bold"),
+                     fg="#22252b", bg="#fff").pack(side="left", padx=S(22))
+            tk.Label(hd, text="到点震 · 按任意键停", font=FT(9),
+                     fg="#8a8f99", bg="#fff").pack(side="right", padx=S(22))
 
             box = tk.Frame(self, bg="#fff", highlightthickness=1,
                            highlightbackground="#e5e7ec")
-            box.pack(fill="both", expand=True, padx=20, pady=14)
+            box.pack(fill="both", expand=True, padx=S(20), pady=S(14))
 
             # 时间
             row = tk.Frame(box, bg="#fff")
-            row.pack(fill="x", padx=18, pady=(16, 6))
-            tk.Label(row, text="响铃时间", font=(FONT, 10), fg="#3a3e46",
+            row.pack(fill="x", padx=S(18), pady=(S(16), S(6)))
+            tk.Label(row, text="响铃时间", font=FT(10), fg="#3a3e46",
                      bg="#fff").pack(side="left")
             try:
                 h, m = [int(x) for x in self.km.get(
@@ -462,89 +464,89 @@ if tk is not None:
             self.m_var = tk.StringVar(value="%02d" % m)
             for var, hi, w in ((self.h_var, 23, 3), (self.m_var, 59, 3)):
                 sp = tk.Spinbox(row, from_=0, to=hi, width=w, format="%02.0f",
-                                font=("Consolas", 13), justify="center",
+                                font=FT(13, family="Consolas"), justify="center",
                                 textvariable=var, relief="flat",
                                 bg="#f4f5f8", buttonbackground="#f4f5f8")
                 sp.pack(side="left", padx=(10, 0))
                 var.trace_add("write", lambda *_a: self._apply())
-            tk.Label(row, text="（24 小时制）", font=(FONT, 8), fg="#8a8f99",
-                     bg="#fff").pack(side="left", padx=8)
+            tk.Label(row, text="（24 小时制）", font=FT(8), fg="#8a8f99",
+                     bg="#fff").pack(side="left", padx=S(8))
 
             # 选项
             self.rep_var = tk.BooleanVar(
                 value=bool(self.km.get("alarm_repeat", True)))
             tk.Checkbutton(box, text="每天重复响（不勾就只响一次）",
-                           variable=self.rep_var, font=(FONT, 9),
+                           variable=self.rep_var, font=FT(9),
                            fg="#3a3e46", bg="#fff", activebackground="#fff",
                            selectcolor="#fff",
-                           command=self._apply).pack(anchor="w", padx=18,
-                                                    pady=(8, 2))
+                           command=self._apply).pack(anchor="w", padx=S(18),
+                                                    pady=(S(8), S(2)))
 
             # 强度
             sr = tk.Frame(box, bg="#fff")
-            sr.pack(fill="x", padx=18, pady=(8, 2))
-            tk.Label(sr, text="震动强度", font=(FONT, 9), fg="#3a3e46",
+            sr.pack(fill="x", padx=S(18), pady=(S(8), S(2)))
+            tk.Label(sr, text="震动强度", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left")
             self.st_var = tk.DoubleVar(
                 value=float(self.km.get("alarm_strength", 1.0)))
-            self.st_lbl = tk.Label(sr, text="", font=(FONT, 8), fg="#8a8f99",
+            self.st_lbl = tk.Label(sr, text="", font=FT(8), fg="#8a8f99",
                                    bg="#fff")
             self.st_lbl.pack(side="right")
             tk.Scale(sr, from_=0.1, to=3.0, resolution=0.05,
                      variable=self.st_var, orient="horizontal", length=190,
                      bg="#fff", highlightthickness=0, troughcolor="#f0f1f4",
-                     command=lambda _v: self._apply()).pack(side="left", padx=8)
+                     command=lambda _v: self._apply()).pack(side="left", padx=S(8))
             self._upd_st_lbl()
 
             # 铃声
             rr = tk.Frame(box, bg="#fff")
-            rr.pack(fill="x", padx=18, pady=(12, 2))
-            tk.Label(rr, text="铃声", font=(FONT, 9), fg="#3a3e46",
+            rr.pack(fill="x", padx=S(18), pady=(S(12), S(2)))
+            tk.Label(rr, text="铃声", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left")
             names = ring_names()
             self.ring_var = tk.StringVar(value=names[self.alarm.ring_index])
             om = tk.OptionMenu(rr, self.ring_var, *names)
-            om.config(font=(FONT, 9), bg="#fff", relief="flat", width=11,
+            om.config(font=FT(9), bg="#fff", relief="flat", width=11,
                       highlightthickness=0, activebackground="#e0334a",
                       activeforeground="#fff", cursor="hand2")
             try:
-                om["menu"].config(font=(FONT, 9), bg="#fff")
+                om["menu"].config(font=FT(9), bg="#fff")
             except Exception:
                 pass
-            om.pack(side="left", padx=8)
-            self.ring_desc = tk.Label(box, text="", font=(FONT, 8),
-                                      fg="#8a8f99", bg="#fff", wraplength=350,
+            om.pack(side="left", padx=S(8))
+            self.ring_desc = tk.Label(box, text="", font=FT(8),
+                                      fg="#8a8f99", bg="#fff", wraplength=S(350),
                                       justify="left")
-            self.ring_desc.pack(anchor="w", padx=20, pady=(0, 2))
+            self.ring_desc.pack(anchor="w", padx=S(20), pady=(S(0), S(2)))
             self.ring_var.trace_add("write", lambda *_a: self._on_ring())
             self._upd_ring_desc()
 
             # 状态 + 倒计时
-            self.state_lbl = tk.Label(box, text="", font=(FONT, 11, "bold"),
+            self.state_lbl = tk.Label(box, text="", font=FT(11, "bold"),
                                       fg="#8a8f99", bg="#fff")
-            self.state_lbl.pack(pady=(20, 2))
-            self.cd_lbl = tk.Label(box, text="", font=(FONT, 9), fg="#8a8f99",
+            self.state_lbl.pack(pady=(S(20), S(2)))
+            self.cd_lbl = tk.Label(box, text="", font=FT(9), fg="#8a8f99",
                                    bg="#fff")
             self.cd_lbl.pack()
 
             # 按钮
             br = tk.Frame(self, bg="#f5f6f8")
-            br.pack(fill="x", padx=20, pady=(0, 16))
-            self.btn_on = tk.Button(br, text="启用闹钟", font=(FONT, 10, "bold"),
+            br.pack(fill="x", padx=S(20), pady=(S(0), S(16)))
+            self.btn_on = tk.Button(br, text="启用闹钟", font=FT(10, "bold"),
                                     bg="#e0334a", fg="#fff", relief="flat",
-                                    padx=12, pady=7, cursor="hand2",
+                                    padx=S(12), pady=S(7), cursor="hand2",
                                     command=self.toggle)
             self.btn_on.pack(side="left")
-            self.btn_test = tk.Button(br, text="试听铃声", font=(FONT, 10),
+            self.btn_test = tk.Button(br, text="试听铃声", font=FT(10),
                                       bg="#fff", fg="#4a4e57", relief="flat",
-                                      padx=10, pady=7, cursor="hand2",
+                                      padx=S(10), pady=S(7), cursor="hand2",
                                       command=self.test_ring)
-            self.btn_test.pack(side="left", padx=6)
-            tk.Button(br, text="立即响", font=(FONT, 10), bg="#fff",
-                      fg="#e0334a", relief="flat", padx=10, pady=7,
+            self.btn_test.pack(side="left", padx=S(6))
+            tk.Button(br, text="立即响", font=FT(10), bg="#fff",
+                      fg="#e0334a", relief="flat", padx=S(10), pady=S(7),
                       cursor="hand2", command=self.ring_now).pack(side="left")
-            tk.Button(br, text="关闭", font=(FONT, 10), bg="#fff",
-                      fg="#4a4e57", relief="flat", padx=14, pady=7,
+            tk.Button(br, text="关闭", font=FT(10), bg="#fff",
+                      fg="#4a4e57", relief="flat", padx=S(14), pady=S(7),
                       cursor="hand2", command=self.destroy).pack(side="right")
             self._upd_btn()
 

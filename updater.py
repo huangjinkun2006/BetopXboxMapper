@@ -18,7 +18,16 @@ try:
 except Exception:          # 无界面环境下也能当纯模块用
     tk = None
 
-APP_VERSION = "1.0.30"
+try:
+    from padui import FT, S
+except Exception:
+    def FT(size, weight="normal", family=None):
+        return (family or "Microsoft YaHei", size, weight)
+
+    def S(px):
+        return px
+
+APP_VERSION = "1.0.31"
 REPO = "huangjinkun2006/BetopXboxMapper"
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO
 API_RELEASES = "https://api.github.com/repos/%s/releases?per_page=20" % REPO
@@ -381,7 +390,7 @@ def download_async_tk(widget, url, dest, on_progress, on_done, interval=100):
 class UpdateDialog(tk.Toplevel if tk else object):
     """检查更新窗口：显示当前版本、最新结果、更新说明、下载按钮"""
 
-    W, H = 480, 520
+    W, H = S(480), S(520)
 
     def __init__(self, master, auto=False, on_result=None):
         super().__init__(master)
@@ -421,26 +430,26 @@ class UpdateDialog(tk.Toplevel if tk else object):
         hd = tk.Frame(self, bg="#fff", height=70)
         hd.pack(fill="x")
         hd.pack_propagate(False)
-        tk.Label(hd, text="🔄  检查更新", font=("Microsoft YaHei UI", 15, "bold"),
-                 fg="#22252b", bg="#fff").pack(side="left", padx=22)
-        self.ver_lbl = tk.Label(hd, text="v" + APP_VERSION, font=("Consolas", 10),
+        tk.Label(hd, text="🔄  检查更新", font=FT(15, "bold", family="Microsoft YaHei UI"),
+                 fg="#22252b", bg="#fff").pack(side="left", padx=S(22))
+        self.ver_lbl = tk.Label(hd, text="v" + APP_VERSION, font=FT(10, family="Consolas"),
                                 fg="#8a8f99", bg="#fff")
-        self.ver_lbl.pack(side="right", padx=22)
+        self.ver_lbl.pack(side="right", padx=S(22))
 
         self.state_lbl = tk.Label(self, text="正在连接 GitHub",
-                                  font=("Microsoft YaHei UI", 12, "bold"),
+                                  font=FT(12, "bold", family="Microsoft YaHei UI"),
                                   fg="#8a8f99", bg="#f5f6f8")
-        self.state_lbl.pack(pady=(26, 2))
-        self.sub_lbl = tk.Label(self, text="", font=("Microsoft YaHei UI", 9),
+        self.state_lbl.pack(pady=(S(26), S(2)))
+        self.sub_lbl = tk.Label(self, text="", font=FT(9, family="Microsoft YaHei UI"),
                                 fg="#8a8f99", bg="#f5f6f8")
         self.sub_lbl.pack()
 
         box = tk.Frame(self, bg="#fff", highlightthickness=1,
                        highlightbackground="#e5e7ec")
-        box.pack(fill="both", expand=True, padx=20, pady=(16, 8))
+        box.pack(fill="both", expand=True, padx=S(20), pady=(S(16), S(8)))
         self.txt = scrolledtext.ScrolledText(
-            box, font=("Microsoft YaHei UI", 9), wrap="word",
-            relief="flat", bg="#fff", fg="#3a3e46", padx=10, pady=8,
+            box, font=FT(9, family="Microsoft YaHei UI"), wrap="word",
+            relief="flat", bg="#fff", fg="#3a3e46", padx=S(10), pady=S(8),
             spacing1=2, spacing3=2)
         self.txt.pack(fill="both", expand=True)
         self.txt.insert("1.0", "正在读取最新 Release …")
@@ -449,39 +458,39 @@ class UpdateDialog(tk.Toplevel if tk else object):
         # 进度条：只有真下载时才塞进来（放在说明框和按钮之间）
         self.pb = ttk.Progressbar(self, mode="determinate", maximum=100)
         self.br = br = tk.Frame(self, bg="#f5f6f8")
-        br.pack(fill="x", padx=20, pady=(0, 8))
+        br.pack(fill="x", padx=S(20), pady=(S(0), S(8)))
 
-        BF = ("Microsoft YaHei UI", 10)
-        self.btn_dl = tk.Button(br, text="⬇ 下载新版", font=(BF[0], 10, "bold"),
-                                bg="#e0334a", fg="#fff", relief="flat", padx=16, pady=7,
+        BF = FT(10, family="Microsoft YaHei UI")
+        self.btn_dl = tk.Button(br, text="⬇ 下载新版", font=FT(10, "bold", family="Microsoft YaHei UI"),
+                                bg="#e0334a", fg="#fff", relief="flat", padx=S(16), pady=S(7),
                                 cursor="hand2", state="disabled", command=self._download)
         self.btn_dl.pack(side="left")
         self.btn_more = tk.Button(br, text="其它文件 ▾", font=BF,
-                                  bg="#fff", fg="#4a4e57", relief="flat", padx=12, pady=7,
+                                  bg="#fff", fg="#4a4e57", relief="flat", padx=S(12), pady=S(7),
                                   cursor="hand2", state="disabled",
                                   command=self._menu)
-        self.btn_more.pack(side="left", padx=8)
+        self.btn_more.pack(side="left", padx=S(8))
         self.btn_close = tk.Button(br, text="关闭", font=BF,
-                                   bg="#fff", fg="#4a4e57", relief="flat", padx=14, pady=7,
+                                   bg="#fff", fg="#4a4e57", relief="flat", padx=S(14), pady=S(7),
                                    cursor="hand2", command=self.destroy)
         self.btn_close.pack(side="right")
 
         br2 = tk.Frame(self, bg="#f5f6f8")
-        br2.pack(fill="x", padx=20, pady=(0, 14))
+        br2.pack(fill="x", padx=S(20), pady=(S(0), S(14)))
         self.btn_recheck = tk.Button(br2, text="🔄 重新检查", font=BF,
                                      bg="#fff", fg="#4a4e57", relief="flat",
-                                     padx=12, pady=6, cursor="hand2",
+                                     padx=S(12), pady=S(6), cursor="hand2",
                                      command=self._check)
         self.btn_recheck.pack(side="left")
         self.btn_page = tk.Button(br2, text="打开发布页", font=BF,
                                   bg="#fff", fg="#4a4e57", relief="flat",
-                                  padx=12, pady=6, cursor="hand2",
+                                  padx=S(12), pady=S(6), cursor="hand2",
                                   command=lambda: open_page(
                                       self.info["url"] if self.info else None))
-        self.btn_page.pack(side="left", padx=8)
+        self.btn_page.pack(side="left", padx=S(8))
         self.btn_open = tk.Button(br2, text="📂 打开下载文件夹", font=BF,
                                   bg="#fff", fg="#4a4e57", relief="flat",
-                                  padx=12, pady=6, cursor="hand2",
+                                  padx=S(12), pady=S(6), cursor="hand2",
                                   state="disabled", command=self._open_dir)
         self.btn_open.pack(side="left")
 
@@ -628,9 +637,9 @@ class UpdateDialog(tk.Toplevel if tk else object):
         self._busy = False
         self.pb.config(value=0)
         try:
-            self.pb.pack(fill="x", padx=20, pady=(0, 8), before=self.br)
+            self.pb.pack(fill="x", padx=S(20), pady=(S(0), S(8)), before=self.br)
         except Exception:
-            self.pb.pack(fill="x", padx=20, pady=(0, 8))
+            self.pb.pack(fill="x", padx=S(20), pady=(S(0), S(8)))
         self.btn_dl.config(text="✕ 取消下载", bg="#4a4e57", state="normal")
         self.btn_more.config(state="disabled")
         self.btn_recheck.config(state="disabled")

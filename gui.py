@@ -50,9 +50,10 @@ T_SHOW, T_TOGGLE, T_ALARM, T_TEST, T_UPDATE, T_EXIT = 1, 2, 3, 4, 5, 6
 T_NOTIFY = 7
 
 # 配色 / 手柄图统一放在 padui.py（识别向导 wizard.py 用的是同一套）
+import padui
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
-                   C_LINE, C_OK, C_PRESS, P_KNOB, FONT, round_rect, PadView,
-                   apply_icon)
+                   C_LINE, C_OK, C_PRESS, P_KNOB, FONT, FT, S, round_rect,
+                   PadView, apply_icon)
 
 C_RED = C_ACC          # 旧变量名兼容
 C_RED_DK = C_ACC_DK
@@ -69,8 +70,8 @@ class App:
         root.title("北通游戏厅 · 手柄映射器")
         # 可缩放：内容太少会挤成一团，给个下限；手柄图按比例跟着变（见 _pad_fit）
         root.resizable(True, True)
-        root.minsize(940, 620)
-        _w0, _h0 = 1080, 730
+        root.minsize(S(940), S(620))
+        _w0, _h0 = S(1080), S(860)
         root.geometry("%dx%d+%d+%d" % (_w0, _h0,
                                        (root.winfo_screenwidth() - _w0) // 2,
                                        (root.winfo_screenheight() - _h0) // 2))
@@ -328,8 +329,9 @@ class App:
                         self.status.set("📱 %s 来消息，震了一下" % src)
                         self._refresh_status()
                 elif kind == "on":
-                    self.status.set("📱 手机通知已开启：%s"
-                                    % (", ".join(info.get("urls", []))))
+                    # 地址不放状态栏了（3 个 URL 会把顶部 chip 撑爆），
+                    # 完整地址在「手机通知」窗口里，能看能复制
+                    self.status.set("📱 手机通知已开启（地址见「手机通知」）")
                     self._refresh_status()
             except Exception:
                 pass
@@ -396,32 +398,32 @@ class App:
     # ------------------------------------------------------------ 界面
     def _build(self):
         # ================= 左侧导航 =================
-        sb = tk.Frame(self.root, bg=C_CARD, width=152)
+        sb = tk.Frame(self.root, bg=C_CARD, width=S(152))
         sb.pack(side="left", fill="y")
         sb.pack_propagate(False)
         tk.Frame(sb, bg=C_LINE, height=0).pack()
 
         logo = tk.Frame(sb, bg=C_CARD)
-        logo.pack(fill="x", padx=18, pady=(20, 4))
-        ic = tk.Canvas(logo, width=32, height=32, bg=C_CARD, highlightthickness=0)
+        logo.pack(fill="x", padx=S(18), pady=(S(20), S(4)))
+        ic = tk.Canvas(logo, width=S(32), height=S(32), bg=C_CARD, highlightthickness=0)
         ic.pack(side="left")
-        round_rect(ic, 1, 6, 31, 28, 9, fill=C_RED, outline="")
-        ic.create_text(16, 17, text="🎮", font=("Segoe UI Emoji", 12))
-        tk.Label(logo, text="北通游戏厅", font=(FONT, 12, "bold"),
-                 fg=C_TEXT, bg=C_CARD).pack(side="left", padx=6)
-        tk.Label(sb, text="手柄映射工具版", font=(FONT, 8),
-                 fg=C_SUB, bg=C_CARD).pack(padx=20, anchor="w")
+        round_rect(ic, S(1), S(6), S(31), S(28), S(9), fill=C_RED, outline="")
+        ic.create_text(S(16), S(17), text="🎮", font=FT(12, family="Segoe UI Emoji"))
+        tk.Label(logo, text="北通游戏厅", font=FT(12, "bold"),
+                 fg=C_TEXT, bg=C_CARD).pack(side="left", padx=S(6))
+        tk.Label(sb, text="手柄映射工具版", font=FT(8),
+                 fg=C_SUB, bg=C_CARD).pack(padx=S(20), anchor="w")
 
         def nav_header(t):
-            tk.Label(sb, text=t, font=(FONT, 8), fg=C_SUB, bg=C_CARD
-                     ).pack(fill="x", padx=20, pady=(16, 3))
+            tk.Label(sb, text=t, font=FT(8), fg=C_SUB, bg=C_CARD
+                     ).pack(fill="x", padx=S(20), pady=(S(16), S(3)))
 
         def nav_item(t, cmd=None, active=False):
-            f = tk.Label(sb, text="  " + t, font=(FONT, 10, "bold" if active else "normal"),
+            f = tk.Label(sb, text="  " + t, font=FT(10, "bold" if active else "normal"),
                          fg=(C_RED if active else "#4a4e57"),
                          bg=(C_ACC_LT if active else C_CARD),
-                         anchor="w", padx=6, pady=7, cursor="hand2")
-            f.pack(fill="x", padx=12, pady=1)
+                         anchor="w", padx=S(6), pady=S(7), cursor="hand2")
+            f.pack(fill="x", padx=S(12), pady=S(1))
             if cmd:
                 f.bind("<Button-1>", lambda e: cmd())
             return f
@@ -442,13 +444,13 @@ class App:
         nav_item("🔄 检查更新", self.open_update)
 
         ft = tk.Frame(sb, bg=C_CARD)
-        ft.pack(side="bottom", pady=12)
+        ft.pack(side="bottom", pady=S(12))
         tk.Label(ft, text="BTP-V1T 先游定制版\nv" + updater.APP_VERSION,
-                 font=(FONT, 8), fg="#c2c6cd", bg=C_CARD,
+                 font=FT(8), fg="#c2c6cd", bg=C_CARD,
                  justify="center").pack()
-        self.foot_upd = tk.Label(ft, text="检查更新…", font=(FONT, 8),
+        self.foot_upd = tk.Label(ft, text="检查更新…", font=FT(8),
                                  fg="#c2c6cd", bg=C_CARD, cursor="hand2")
-        self.foot_upd.pack(pady=(5, 0))
+        self.foot_upd.pack(pady=(S(5), S(0)))
         self.foot_upd.bind("<Button-1>", lambda e: self.open_update())
 
         # ================= 主区 =================
@@ -458,58 +460,58 @@ class App:
         top = tk.Frame(main, bg=C_CARD)
         top.pack(fill="x")
         inner = tk.Frame(top, bg=C_CARD)
-        inner.pack(fill="x", padx=22, pady=11)
-        tk.Label(inner, text="键位映射", font=(FONT, 15, "bold"),
+        inner.pack(fill="x", padx=S(22), pady=S(11))
+        tk.Label(inner, text="键位映射", font=FT(15, "bold"),
                  fg=C_TEXT, bg=C_CARD).pack(side="left")
-        self.chip = tk.Label(inner, text="● " + self.status.get(), font=(FONT, 9),
-                             fg=C_SUB, bg="#f4f5f8", padx=10, pady=4,
-                             wraplength=240, justify="left")
-        self.chip.pack(side="left", padx=14)
+        self.chip = tk.Label(inner, text="● " + self.status.get(), font=FT(9),
+                             fg=C_SUB, bg="#f4f5f8", padx=S(10), pady=S(4),
+                             wraplength=S(430), justify="left")
+        self.chip.pack(side="left", padx=S(14))
         # 手柄电量（插上手柄后自动检测，有线读不到就显示 USB 供电）
-        self.lbl_batt = tk.Label(inner, text="🔋 …", font=(FONT, 9),
-                                 fg=C_SUB, bg="#f4f5f8", padx=10, pady=4)
+        self.lbl_batt = tk.Label(inner, text="🔋 …", font=FT(9),
+                                 fg=C_SUB, bg="#f4f5f8", padx=S(10), pady=S(4))
         self.lbl_batt.pack(side="left", padx=(0, 8))
         self._batt_seq = 0
         self._refresh_batt()
-        self.btn_run = tk.Button(inner, text="启动映射", font=(FONT, 10, "bold"),
+        self.btn_run = tk.Button(inner, text="启动映射", font=FT(10, "bold"),
                                  fg="white", bg=C_RED, activebackground=C_RED_DK,
                                  activeforeground="white", relief="flat",
-                                 padx=22, pady=6, cursor="hand2",
+                                 padx=S(22), pady=S(6), cursor="hand2",
                                  command=self.toggle)
         self.btn_run.pack(side="right")
         # 屏蔽物理手柄：走 HidHide 内核过滤驱动（v1.0.13 起替换独占方案，
         # 独占打不过 XboxService / dwm 这些常年持有手柄句柄的系统组件）
-        self.btn_hide = tk.Button(inner, text="屏蔽物理手柄", font=(FONT, 9),
-                                  relief="flat", padx=10, pady=6,
+        self.btn_hide = tk.Button(inner, text="屏蔽物理手柄", font=FT(9),
+                                  relief="flat", padx=S(10), pady=S(6),
                                   cursor="hand2", command=self.toggle_hide)
         self.btn_hide.pack(side="right", padx=(0, 10))
-        tk.Button(inner, text="⚙ 名单", font=(FONT, 8), fg=C_SUB,
-                  relief="flat", padx=8, pady=7, cursor="hand2",
+        tk.Button(inner, text="⚙ 名单", font=FT(8), fg=C_SUB,
+                  relief="flat", padx=S(8), pady=S(7), cursor="hand2",
                   command=self.open_hidhide).pack(side="right", padx=(0, 6))
         self._refresh_hide_btn()
 
         # ---------- 中央：手柄图 + 右侧状态 ----------
         row = tk.Frame(main, bg=C_BG)
-        row.pack(fill="both", expand=True, padx=18, pady=14)
+        row.pack(fill="both", expand=True, padx=S(18), pady=S(14))
 
         lc = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
         lc.pack(side="left")
         hdr = tk.Frame(lc.body, bg=C_CARD)
-        hdr.pack(fill="x", padx=16, pady=(10, 2))
-        tk.Label(hdr, text="实时手柄状态", font=(FONT, 11, "bold"), fg=C_TEXT,
+        hdr.pack(fill="x", padx=S(16), pady=(S(10), S(2)))
+        tk.Label(hdr, text="实时手柄状态", font=FT(11, "bold"), fg=C_TEXT,
                  bg=C_CARD).pack(side="left")
-        tk.Label(hdr, text="按下会亮绿 · 点任意键可重新绑定", font=(FONT, 8),
-                 fg=C_SUB, bg=C_CARD).pack(side="left", padx=8)
-        self.canvas = tk.Canvas(lc.body, width=480, height=474, bg=C_CARD,
+        tk.Label(hdr, text="按下会亮绿 · 点任意键可重新绑定", font=FT(8),
+                 fg=C_SUB, bg=C_CARD).pack(side="left", padx=S(8))
+        self.canvas = tk.Canvas(lc.body, width=S(480), height=S(474), bg=C_CARD,
                                 highlightthickness=0)
-        self.canvas.pack(padx=8, pady=(2, 10))
+        self.canvas.pack(padx=S(8), pady=(S(2), S(10)))
         self.pad_view = PadView(self.canvas)
         self.pad_view.bind_click(self.rebind)
 
         # ---- 手柄图跟着窗口缩放 ----
         # PadView.draw() 内部按画布实际尺寸等比缩放居中，所以只要算出画布该多大。
         # 尺寸量化到 40px 一档：拖动窗口时不会每个像素都重合成一套贴图
-        self._pad_sz = (480, 474)
+        self._pad_sz = (S(480), S(474))
         self._pad_job = None
 
         def _pad_fit(e=None):
@@ -519,15 +521,15 @@ class App:
                 return
             if rw < 60 or rh < 60:
                 return
-            avail_w = rw - 340 - 16          # 右栏至少留 340
-            avail_h = rh - 84                # 上面标题行 + 内边距 + 余量
-            bw = max(280, min(avail_w, 760))
-            bh = max(280, min(avail_h, 900))
+            avail_w = rw - S(340) - S(16)    # 右栏至少留 340
+            avail_h = rh - S(84)             # 上面标题行 + 内边距 + 余量
+            bw = max(S(280), min(avail_w, S(760)))
+            bh = max(S(280), min(avail_h, S(900)))
             if bw / bh > 480 / 474:
                 bw = int(bh * 480 / 474)
             else:
                 bh = int(bw * 474 / 480)
-            bw = max(200, bw // 40 * 40)
+            bw = max(S(200), bw // S(40) * S(40))
             bh = int(bw * 474 / 480)
             if (bw, bh) == self._pad_sz:
                 return
@@ -547,14 +549,14 @@ class App:
         # 鼠标放右栏上滚轮滚，滚到头不影响别处
         rc_wrap = tk.Frame(row, bg=C_BG)
         # expand=True：窗口拉宽后右栏跟着铺满，不然右边一大片空白
-        rc_wrap.pack(side="left", fill="both", expand=True, padx=(10, 6), ipadx=2)
+        rc_wrap.pack(side="left", fill="both", expand=True, padx=(10, 6), ipadx=S(2))
         rc_cv = tk.Canvas(rc_wrap, bg=C_BG, highlightthickness=0)
         rc_sb = tk.Scrollbar(rc_wrap, orient="vertical", command=rc_cv.yview)
         rc_cv.configure(yscrollcommand=rc_sb.set)
         rc_sb.pack(side="right", fill="y")
         rc_cv.pack(side="left", fill="both", expand=True)
         rc = tk.Frame(rc_cv, bg=C_CARD)
-        rc_win = rc_cv.create_window((14, 14), window=rc, anchor="nw")
+        rc_win = rc_cv.create_window((S(14), S(14)), window=rc, anchor="nw")
 
         def _rc_round(_e=None):
             """圆角白卡片画在滚动 canvas 最底层，内容窗口四周内缩 14px"""
@@ -568,11 +570,11 @@ class App:
 
         def _rc_on_cfg(_e):
             rc_cv.configure(scrollregion=rc_cv.bbox("all"))
-            avail = rc_cv.winfo_width() - rc_sb.winfo_width() - 28
+            avail = rc_cv.winfo_width() - rc_sb.winfo_width() - S(28)
             # 内容最宽 640：窗口特别宽时列表按钮不至于拉得稀稀拉拉，居中放
-            w = min(avail, 640)
+            w = min(avail, S(640))
             rc_cv.itemconfigure(rc_win, width=w)
-            rc_cv.coords(rc_win, max(14, (rc_cv.winfo_width() -
+            rc_cv.coords(rc_win, max(S(14), (rc_cv.winfo_width() -
                                           rc_sb.winfo_width() - w) // 2), 14)
             _rc_round()
 
@@ -591,193 +593,194 @@ class App:
             rc_cv.yview_scroll(-1 if e.delta > 0 else 1, "units")
 
         self.root.bind("<MouseWheel>", _rc_wheel)
-        tk.Label(rc, text="设备", font=(FONT, 11, "bold"), fg=C_TEXT,
-                 bg=C_CARD).pack(anchor="w", padx=14, pady=(10, 4))
-        self.dev_lbl = tk.Label(rc, text="北通 BTP-V1T\n先游定制版", font=(FONT, 9),
+        tk.Label(rc, text="设备", font=FT(11, "bold"), fg=C_TEXT,
+                 bg=C_CARD).pack(anchor="w", padx=S(14), pady=(S(10), S(4)))
+        self.dev_lbl = tk.Label(rc, text="北通 BTP-V1T\n先游定制版", font=FT(9),
                                 fg=C_TEXT, bg=C_CARD, justify="left")
-        self.dev_lbl.pack(anchor="w", padx=14)
+        self.dev_lbl.pack(anchor="w", padx=S(14))
         tk.Label(rc, text="游戏里出现两个手柄？点上面「屏蔽物理手柄」，\n"
                          "让游戏只看到虚拟 Xbox 那一把（HidHide 驱动级屏蔽）。\n"
                          "随时可点，映射运行中也行。",
-                 font=(FONT, 8), fg=C_SUB, bg=C_CARD,
-                 justify="left").pack(anchor="w", padx=14, pady=(4, 0))
-        self.mode_lbl = tk.Label(rc, text="解码：未连接", font=(FONT, 8), fg=C_SUB,
+                 font=FT(8), fg=C_SUB, bg=C_CARD,
+                 justify="left").pack(anchor="w", padx=S(14), pady=(S(4), S(0)))
+        self.mode_lbl = tk.Label(rc, text="解码：未连接", font=FT(8), fg=C_SUB,
                                  bg=C_CARD)
-        self.mode_lbl.pack(anchor="w", padx=14, pady=(2, 8))
-        tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=12)
-        tk.Label(rc, text="改键（先启动映射）", font=(FONT, 9, "bold"), fg=C_TEXT,
-                 bg=C_CARD).pack(anchor="w", padx=14, pady=(8, 4))
+        self.mode_lbl.pack(anchor="w", padx=S(14), pady=(S(2), S(8)))
+        tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=S(12))
+        tk.Label(rc, text="改键（先启动映射）", font=FT(9, "bold"), fg=C_TEXT,
+                 bg=C_CARD).pack(anchor="w", padx=S(14), pady=(S(8), S(4)))
         chips = tk.Frame(rc, bg=C_CARD)
-        chips.pack(padx=12, fill="x")
+        chips.pack(padx=S(12), fill="x")
         for i, name in enumerate(BTN_ORDER):
             cell = tk.Frame(chips, bg="#f4f5f8", highlightthickness=1,
                             highlightbackground=C_LINE)
-            cell.grid(row=i // 2, column=i % 2, padx=3, pady=3, sticky="ew")
-            tk.Label(cell, text=BTN_CN[name], font=("Consolas", 9, "bold"),
+            cell.grid(row=i // 2, column=i % 2, padx=S(3), pady=S(3), sticky="ew")
+            tk.Label(cell, text=BTN_CN[name], font=FT(9, "bold", family="Consolas"),
                      fg="#5a5e66", bg="#f4f5f8", width=5).pack(side="left")
-            lb = tk.Label(cell, text="改", font=(FONT, 8), fg=C_RED,
-                          bg="#f4f5f8", cursor="hand2", padx=4)
+            lb = tk.Label(cell, text="改", font=FT(8), fg=C_RED,
+                          bg="#f4f5f8", cursor="hand2", padx=S(4))
             lb.pack(side="left")
             lb.bind("<Button-1>", lambda e, n=name: self.rebind(n))
         chips.columnconfigure(0, weight=1)
         chips.columnconfigure(1, weight=1)
 
         # ---------- 右侧：震动 ----------
-        tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=12, pady=(10, 0))
-        tk.Label(rc, text="震动", font=(FONT, 9, "bold"), fg=C_TEXT,
-                 bg=C_CARD).pack(anchor="w", padx=14, pady=(8, 2))
+        tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=S(12), pady=(S(10), S(0)))
+        tk.Label(rc, text="震动", font=FT(9, "bold"), fg=C_TEXT,
+                 bg=C_CARD).pack(anchor="w", padx=S(14), pady=(S(8), S(2)))
         self.rumble_on = tk.BooleanVar(value=bool(self.km.get("rumble", True)))
         tk.Checkbutton(rc, text="把游戏的震动转到手柄上", variable=self.rumble_on,
-                       font=(FONT, 9), fg=C_TEXT, bg=C_CARD,
+                       font=FT(9), fg=C_TEXT, bg=C_CARD,
                        activebackground=C_CARD, selectcolor="#eaf5ea",
-                       command=self.on_rumble_cfg).pack(anchor="w", padx=12)
+                       command=self.on_rumble_cfg).pack(anchor="w", padx=S(12))
         fr = tk.Frame(rc, bg=C_CARD)
-        fr.pack(fill="x", padx=14, pady=(4, 0))
-        tk.Label(fr, text="命令格式", font=(FONT, 8), fg=C_SUB,
+        fr.pack(fill="x", padx=S(14), pady=(S(4), S(0)))
+        tk.Label(fr, text="命令格式", font=FT(8), fg=C_SUB,
                  bg=C_CARD).pack(side="left")
         names = [f[0] for f in betop.RUMBLE_FORMATS]
         self.rumble_fmt = tk.StringVar(value=names[self.km.get("rumble_fmt", 0)])
         om = tk.OptionMenu(fr, self.rumble_fmt, *names)
-        om.config(font=(FONT, 8), bg="#f4f5f8", relief="flat",
+        om.config(font=FT(8), bg="#f4f5f8", relief="flat",
                   highlightthickness=0, width=16)
-        om["menu"].config(font=(FONT, 8))
-        om.pack(side="left", padx=4)
+        om["menu"].config(font=FT(8))
+        om.pack(side="left", padx=S(4))
         self.rumble_fmt.trace_add("write", lambda *_: self.on_rumble_cfg())
         # 震动强度滑块（转发和娱乐模式都吃这个系数）
         gr = tk.Frame(rc, bg=C_CARD)
-        gr.pack(fill="x", padx=14, pady=(2, 0))
-        tk.Label(gr, text="强度", font=(FONT, 8), fg=C_SUB,
+        gr.pack(fill="x", padx=S(14), pady=(S(2), S(0)))
+        tk.Label(gr, text="强度", font=FT(8), fg=C_SUB,
                  bg=C_CARD).pack(side="left")
-        tk.Label(gr, text="(>100%放大)", font=(FONT, 7), fg="#a0a4ad",
+        tk.Label(gr, text="(>100%放大)", font=FT(7), fg="#a0a4ad",
                  bg=C_CARD).pack(side="left")
         self.rumble_gain = tk.DoubleVar(
             value=float(self.km.get("rumble_gain", 1.0)))
         ttk.Scale(gr, from_=0.05, to=3.0, variable=self.rumble_gain,
                   length=118, command=lambda _v: self.on_gain()).pack(
-            side="left", padx=4)
+            side="left", padx=S(4))
         self.gain_lbl = tk.Label(gr, text=f"{int(self.rumble_gain.get() * 100)}%",
-                                 font=("Consolas", 8), fg=C_TEXT, bg=C_CARD, width=4)
+                                 font=FT(8, family="Consolas"), fg=C_TEXT, bg=C_CARD, width=4)
         self.gain_lbl.pack(side="left")
         tb = tk.Frame(rc, bg=C_CARD)
-        tb.pack(fill="x", padx=14, pady=(6, 12))
-        tk.Button(tb, text="试震一下", font=(FONT, 9), fg="white", bg=C_ACC,
+        tb.pack(fill="x", padx=S(14), pady=(S(6), S(12)))
+        tk.Button(tb, text="试震一下", font=FT(9), fg="white", bg=C_ACC,
                   activebackground=C_ACC_DK, activeforeground="white",
-                  relief="flat", padx=10, pady=4, cursor="hand2",
+                  relief="flat", padx=S(10), pady=S(4), cursor="hand2",
                   command=self.test_rumble).pack(side="left")
-        tk.Button(tb, text="停止震动", font=(FONT, 9), fg="#c0392b", bg="#fdecea",
-                  relief="flat", padx=10, pady=4, cursor="hand2",
-                  command=self.stop_rumble).pack(side="left", padx=6)
-        tk.Button(tb, text="自动识别", font=(FONT, 9), fg=C_TEXT, bg="#f0f1f4",
-                  relief="flat", padx=10, pady=4, cursor="hand2",
-                  command=self.auto_scan).pack(side="left", padx=6)
+        tk.Button(tb, text="停止震动", font=FT(9), fg="#c0392b", bg="#fdecea",
+                  relief="flat", padx=S(10), pady=S(4), cursor="hand2",
+                  command=self.stop_rumble).pack(side="left", padx=S(6))
+        tk.Button(tb, text="自动识别", font=FT(9), fg=C_TEXT, bg="#f0f1f4",
+                  relief="flat", padx=S(10), pady=S(4), cursor="hand2",
+                  command=self.auto_scan).pack(side="left", padx=S(6))
         # 状态提示单独一行放着（跟三个按钮同排太宽，右栏会被裁）
-        self.rumble_lbl = tk.Label(rc, text="", font=(FONT, 8), fg=C_SUB,
-                                   bg=C_CARD, wraplength=310, justify="left")
-        self.rumble_lbl.pack(anchor="w", padx=14, pady=(2, 0))
+        self.rumble_lbl = tk.Label(rc, text="", font=FT(8), fg=C_SUB,
+                                   bg=C_CARD, wraplength=S(310), justify="left")
+        self.rumble_lbl.pack(anchor="w", padx=S(14), pady=(S(2), S(0)))
         # ---- 四个马达单独测（左柄/右柄/左扳机/右扳机）----
         mt = tk.Frame(rc, bg=C_CARD)
-        mt.pack(fill="x", padx=10, pady=(0, 2))
-        tk.Label(mt, text="单马达", font=(FONT, 8), fg=C_SUB,
+        mt.pack(fill="x", padx=S(10), pady=(S(0), S(2)))
+        tk.Label(mt, text="单马达", font=FT(8), fg=C_SUB,
                  bg=C_CARD).pack(side="left")
         self.motor_btns = {}
         for key, name in (("big", "左柄"), ("small", "右柄"),
                           ("tl", "左扳机"), ("tr", "右扳机")):
-            b = tk.Button(mt, text=name, font=(FONT, 8), bg="#f0f1f4",
-                          fg=C_TEXT, relief="flat", padx=4, pady=2,
+            b = tk.Button(mt, text=name, font=FT(8), bg="#f0f1f4",
+                          fg=C_TEXT, relief="flat", padx=S(4), pady=S(2),
                           cursor="hand2",
                           command=lambda k=key: self.test_motor(k))
-            b.pack(side="left", padx=1)
+            b.pack(side="left", padx=S(1))
             self.motor_btns[key] = b
-        self.btn_scan = tk.Button(mt, text="扫命令", font=(FONT, 8),
+        self.btn_scan = tk.Button(mt, text="扫命令", font=FT(8),
                                   fg="#1e7e34", bg="#e6f4ea", relief="flat",
-                                  padx=4, pady=2, cursor="hand2",
+                                  padx=S(4), pady=S(2), cursor="hand2",
                                   command=self.open_motor_scan)
-        self.btn_scan.pack(side="left", padx=3)
-        tk.Button(mt, text="重置", font=(FONT, 8), fg=C_SUB,
-                  bg="#f0f1f4", relief="flat", padx=4, pady=2, cursor="hand2",
+        self.btn_scan.pack(side="left", padx=S(3))
+        tk.Button(mt, text="重置", font=FT(8), fg=C_SUB,
+                  bg="#f0f1f4", relief="flat", padx=S(4), pady=S(2), cursor="hand2",
                   command=self.reset_rumble).pack(side="left")
         # 合并模式：反正都是震动，四个马达共用一条命令一起震
         self.rm_merge = tk.BooleanVar(
             value=bool(self.km.get("rumble_merge", True)))
         tk.Checkbutton(rc, text="四个马达合并成一个震动（不分左右 / 扳机）",
-                       variable=self.rm_merge, font=(FONT, 8), fg=C_TEXT,
+                       variable=self.rm_merge, font=FT(8), fg=C_TEXT,
                        bg=C_CARD, activebackground=C_CARD, selectcolor="#eaf5ea",
-                       command=self.on_merge).pack(anchor="w", padx=12)
+                       command=self.on_merge).pack(anchor="w", padx=S(12))
         # 游戏只发两大马达信号，扳机要震只能跟着手柄马达走
         self.trig_follow = tk.BooleanVar(
             value=bool(self.km.get("trig_follow", False)))
         self.cb_trig = tk.Checkbutton(
             rc, text="扳机马达跟着手柄一起震（游戏信号里没有扳机）",
-            variable=self.trig_follow, font=(FONT, 8), fg=C_SUB,
+            variable=self.trig_follow, font=FT(8), fg=C_SUB,
             bg=C_CARD, activebackground=C_CARD, selectcolor="#eaf5ea",
             command=self.on_trig_follow)
-        self.cb_trig.pack(anchor="w", padx=12)
+        self.cb_trig.pack(anchor="w", padx=S(12))
         self._refresh_motor_btns()
         # 诊断：游戏到底有没有把震动发过来
         self.dbg_lbl = tk.Label(rc, text="还没收到游戏的震动指令",
-                                font=("Consolas", 8), fg="#a0a4ad",
+                                font=FT(8, family="Consolas"), fg="#a0a4ad",
                                 bg=C_CARD, justify="left")
-        self.dbg_lbl.pack(anchor="w", padx=14, pady=(0, 4))
+        self.dbg_lbl.pack(anchor="w", padx=S(14), pady=(S(0), S(4)))
         # 娱乐模式：手柄无限震动，再点一次停
         self.fun_stop = threading.Event()
         self._fun_thread = None
         self._fun_rm = None
         self._fun_own = False
         tb2 = tk.Frame(rc, bg=C_CARD)
-        tb2.pack(fill="x", padx=14, pady=(6, 12))
+        tb2.pack(fill="x", padx=S(14), pady=(S(6), S(12)))
         self.btn_fun = tk.Button(tb2, text="娱乐模式 · 无限震动",
-                                 font=(FONT, 9, "bold"), fg="white", bg="#8e44ad",
+                                 font=FT(9, "bold"), fg="white", bg="#8e44ad",
                                  activebackground="#6c3483",
                                  activeforeground="white", relief="flat",
-                                 padx=12, pady=4, cursor="hand2",
+                                 padx=S(12), pady=S(4), cursor="hand2",
                                  command=self.toggle_fun)
         self.btn_fun.pack(side="left")
-        tk.Label(tb2, text="再点一次按钮停止", font=(FONT, 8), fg=C_SUB,
-                 bg=C_CARD).pack(side="left", padx=6)
+        tk.Label(tb2, text="再点一次按钮停止", font=FT(8), fg=C_SUB,
+                 bg=C_CARD).pack(side="left", padx=S(6))
         cl = tk.Frame(rc, bg=C_CARD)
-        cl.pack(fill="x", padx=14, pady=(0, 10))
+        cl.pack(fill="x", padx=S(14), pady=(S(0), S(10)))
         self.custom_lbl = tk.Label(cl, text=self._custom_text(),
-                                   font=(FONT, 8), fg=C_SUB, bg=C_CARD,
-                                   justify="left", wraplength=210)
+                                   font=FT(8), fg=C_SUB, bg=C_CARD,
+                                   justify="left", wraplength=S(210))
         self.custom_lbl.pack(side="left")
         self.btn_clr_custom = tk.Button(
-            cl, text="🗑", font=(FONT, 8), relief="flat", bg="#fdecea",
-            fg="#c0392b", padx=5, pady=0, cursor="hand2",
+            cl, text="🗑", font=FT(8), relief="flat", bg="#fdecea",
+            fg="#c0392b", padx=S(5), pady=S(0), cursor="hand2",
             command=lambda: self.clear_custom(True))
         self.btn_clr_custom.pack(side="right")
 
         # ---------- 底部：摇杆 / 扳机 ----------
         bc = win11ui.Card(main, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
-        bc.pack(fill="x", padx=18, pady=(0, 14))
+        bc.pack(fill="x", padx=S(18), pady=(S(0), S(14)))
         head = tk.Frame(bc.body, bg=C_CARD)
-        head.pack(fill="x", padx=16, pady=(10, 4))
-        tk.Label(head, text="摇杆 / 扳机", font=(FONT, 11, "bold"), fg=C_TEXT,
+        head.pack(fill="x", padx=S(16), pady=(S(10), S(4)))
+        tk.Label(head, text="摇杆 / 扳机", font=FT(11, "bold"), fg=C_TEXT,
                  bg=C_CARD).pack(side="left")
-        tk.Label(head, text="摇杆死区", font=(FONT, 9), fg=C_TEXT,
+        tk.Label(head, text="摇杆死区", font=FT(9), fg=C_TEXT,
                  bg=C_CARD).pack(side="right")
         self.dz = tk.DoubleVar(value=self.km.get("deadzone", 0.12))
-        ttk.Scale(head, from_=0, to=0.5, variable=self.dz, length=110,
+        ttk.Scale(head, from_=0, to=0.5, variable=self.dz, length=S(110),
                   command=lambda v: self.on_dz()).pack(side="right")
         self.dz_lbl = tk.Label(head, text=f"{self.dz.get():.2f}",
-                               font=("Consolas", 9), fg=C_TEXT, bg=C_CARD, width=4)
+                               font=FT(9, family="Consolas"), fg=C_TEXT, bg=C_CARD, width=4)
         self.dz_lbl.pack(side="right")
+
         bars = tk.Frame(bc.body, bg=C_CARD)
-        bars.pack(fill="x", padx=16, pady=(0, 12))
+        bars.pack(fill="x", padx=S(16), pady=(S(0), S(12)))
         self.bars = {}
         for i, k in enumerate(betop.AXIS_TARGETS):
             col = tk.Frame(bars, bg=C_CARD)
-            col.grid(row=0, column=i, padx=6)
-            tk.Label(col, text=k, font=("Consolas", 9, "bold"), fg=C_SUB,
+            col.grid(row=0, column=i, padx=S(6))
+            tk.Label(col, text=k, font=FT(9, "bold", family="Consolas"), fg=C_SUB,
                      bg=C_CARD).pack()
-            cv = tk.Canvas(col, width=104, height=12, bg="#f4f5f8", highlightthickness=0)
-            cv.pack(pady=2)
+            cv = tk.Canvas(col, width=S(104), height=S(12), bg="#f4f5f8", highlightthickness=0)
+            cv.pack(pady=S(2))
             self.bars[k] = cv
-            fz = tk.Label(col, text="反向", font=(FONT, 8), fg=C_RED, bg=C_CARD,
+            fz = tk.Label(col, text="反向", font=FT(8), fg=C_RED, bg=C_CARD,
                           cursor="hand2")
             fz.pack()
             fz.bind("<Button-1>", lambda e, kk=k: self.flip(kk))
             if k in ("LX", "LY", "RX", "RY"):
-                cz = tk.Label(col, text="中位", font=(FONT, 8), fg=C_RED, bg=C_CARD,
+                cz = tk.Label(col, text="中位", font=FT(8), fg=C_RED, bg=C_CARD,
                               cursor="hand2")
                 cz.pack()
                 cz.bind("<Button-1>", lambda e, kk=k: self.calib(kk))
@@ -1348,19 +1351,19 @@ class App:
         win = tk.Toplevel(self.root)
         win.title("自动识别震动命令")
         win.configure(bg=C_CARD)
-        win.geometry("440x230")
+        win.geometry("%dx%d" % (S(440), S(230)))
         win.resizable(False, False)
         win.transient(self.root)
-        tk.Label(win, text="程序会挨个发候选命令，手柄一直震着", font=(FONT, 11, "bold"),
-                 fg=C_TEXT, bg=C_CARD).pack(pady=(16, 2))
+        tk.Label(win, text="程序会挨个发候选命令，手柄一直震着", font=FT(11, "bold"),
+                 fg=C_TEXT, bg=C_CARD).pack(pady=(S(16), S(2)))
         tk.Label(win, text="感觉到震动就点「这次震了！」，没感觉点「下一个」",
-                 font=(FONT, 9), fg=C_SUB, bg=C_CARD).pack()
+                 font=FT(9), fg=C_SUB, bg=C_CARD).pack()
         v_prog = tk.StringVar(value="")
-        tk.Label(win, textvariable=v_prog, font=("Consolas", 9), fg=C_ACC,
-                 bg=C_CARD).pack(pady=(10, 0))
+        tk.Label(win, textvariable=v_prog, font=FT(9, family="Consolas"), fg=C_ACC,
+                 bg=C_CARD).pack(pady=(S(10), S(0)))
         v_name = tk.StringVar(value="")
-        tk.Label(win, textvariable=v_name, font=("Consolas", 11), fg=C_TEXT,
-                 bg="#f4f5f8", padx=8, pady=6, width=42).pack(pady=4)
+        tk.Label(win, textvariable=v_name, font=FT(11, family="Consolas"), fg=C_TEXT,
+                 bg="#f4f5f8", padx=S(8), pady=S(6), width=42).pack(pady=S(4))
 
         def cleanup(keep=None):
             st["done"] = True
@@ -1419,17 +1422,17 @@ class App:
             st["tick"] = self.root.after(900, keepalive)
 
         bt = tk.Frame(win, bg=C_CARD)
-        bt.pack(pady=12)
-        tk.Button(bt, text="这次震了！用这个", font=(FONT, 10, "bold"), fg="white",
+        bt.pack(pady=S(12))
+        tk.Button(bt, text="这次震了！用这个", font=FT(10, "bold"), fg="white",
                   bg=C_ACC, activebackground=C_ACC_DK, activeforeground="white",
-                  relief="flat", padx=14, pady=6, cursor="hand2",
-                  command=lambda: cleanup(st["i"])).pack(side="left", padx=6)
-        tk.Button(bt, text="下一个", font=(FONT, 10), fg=C_TEXT, bg="#f0f1f4",
-                  relief="flat", padx=14, pady=6, cursor="hand2",
-                  command=next_cand).pack(side="left", padx=6)
-        tk.Button(bt, text="放弃", font=(FONT, 10), fg=C_SUB, bg="#f0f1f4",
-                  relief="flat", padx=14, pady=6, cursor="hand2",
-                  command=lambda: cleanup()).pack(side="left", padx=6)
+                  relief="flat", padx=S(14), pady=S(6), cursor="hand2",
+                  command=lambda: cleanup(st["i"])).pack(side="left", padx=S(6))
+        tk.Button(bt, text="下一个", font=FT(10), fg=C_TEXT, bg="#f0f1f4",
+                  relief="flat", padx=S(14), pady=S(6), cursor="hand2",
+                  command=next_cand).pack(side="left", padx=S(6))
+        tk.Button(bt, text="放弃", font=FT(10), fg=C_SUB, bg="#f0f1f4",
+                  relief="flat", padx=S(14), pady=S(6), cursor="hand2",
+                  command=lambda: cleanup()).pack(side="left", padx=S(6))
         win.protocol("WM_DELETE_WINDOW", lambda: cleanup())
         play()
 
@@ -1533,9 +1536,9 @@ class App:
             cv.create_rectangle(mid - n, 2, mid, h - 2, fill=color, outline="")
         if k in ("LY", "RY"):
             # 纵向轴：横条看不出哪头是上，标出来（推上=往右↑填蓝）
-            cv.create_text(5, h // 2, text="↓", font=("Consolas", 7),
+            cv.create_text(5, h // 2, text="↓", font=FT(7, family="Consolas"),
                            fill="#c2c6cd")
-            cv.create_text(w - 5, h // 2, text="↑", font=("Consolas", 7),
+            cv.create_text(w - 5, h // 2, text="↑", font=FT(7, family="Consolas"),
                            fill="#c2c6cd")
 
     # ------------------------------------------------------------ 改键
@@ -1546,10 +1549,10 @@ class App:
         self.rebind_target = name
         win = tk.Toplevel(self.root)
         win.title(f"绑定 {name}")
-        win.geometry("400x140")
+        win.geometry("%dx%d" % (S(400), S(140)))
         win.transient(self.root)
         tk.Label(win, text=f"按住手柄上想当 {BTN_CN[name]} 用的键…",
-                 font=(FONT, 11)).pack(pady=24)
+                 font=FT(11)).pack(pady=S(24))
         pb = ttk.Progressbar(win, mode="indeterminate", length=320)
         pb.pack()
         pb.start()
@@ -1682,68 +1685,68 @@ class MotorScan:
         w = tk.Toplevel(parent)
         self.win = w
         w.title("扫马达命令")
-        w.geometry("430x300")
+        w.geometry("%dx%d" % (S(430), S(300)))
         w.configure(bg=C_BG)
         w.transient(parent)
-        tk.Label(w, text="扫马达命令", font=(FONT, 12, "bold"), fg=C_TEXT,
-                 bg=C_BG).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(w, text="扫马达命令", font=FT(12, "bold"), fg=C_TEXT,
+                 bg=C_BG).pack(anchor="w", padx=S(14), pady=(S(12), S(2)))
         tk.Label(w, text="协议没公开，只能挨个试。把要找的马达选上，点开始，"
                          "感觉到它在震就立刻点「有感，就它了」。",
-                 font=(FONT, 8), fg=C_SUB, bg=C_BG, wraplength=400,
-                 justify="left").pack(anchor="w", padx=14)
+                 font=FT(8), fg=C_SUB, bg=C_BG, wraplength=S(400),
+                 justify="left").pack(anchor="w", padx=S(14))
         mf = tk.Frame(w, bg=C_BG)
-        mf.pack(fill="x", padx=14, pady=(8, 2))
+        mf.pack(fill="x", padx=S(14), pady=(S(8), S(2)))
         for key, name in self.MOTORS:
             tk.Radiobutton(mf, text=name, variable=self.which, value=key,
-                           font=(FONT, 9), fg=C_TEXT, bg=C_BG,
+                           font=FT(9), fg=C_TEXT, bg=C_BG,
                            activebackground=C_BG, selectcolor="#eaf5ea",
-                           command=self._on_pick).pack(side="left", padx=2)
-        self.prog = tk.Label(w, text="点「开始扫描」", font=(FONT, 9),
+                           command=self._on_pick).pack(side="left", padx=S(2))
+        self.prog = tk.Label(w, text="点「开始扫描」", font=FT(9),
                              fg=C_TEXT, bg=C_BG, justify="left")
-        self.prog.pack(anchor="w", padx=14, pady=(10, 2))
-        self.hex_lbl = tk.Label(w, text="", font=("Consolas", 9), fg=C_SUB,
+        self.prog.pack(anchor="w", padx=S(14), pady=(S(10), S(2)))
+        self.hex_lbl = tk.Label(w, text="", font=FT(9, family="Consolas"), fg=C_SUB,
                                 bg=C_BG)
-        self.hex_lbl.pack(anchor="w", padx=14)
+        self.hex_lbl.pack(anchor="w", padx=S(14))
         cf = tk.Frame(w, bg=C_BG)
-        cf.pack(fill="x", padx=14, pady=(4, 0))
-        tk.Label(cf, text="通道", font=(FONT, 8), fg=C_SUB,
+        cf.pack(fill="x", padx=S(14), pady=(S(4), S(0)))
+        tk.Label(cf, text="通道", font=FT(8), fg=C_SUB,
                  bg=C_BG).pack(side="left")
         tk.Radiobutton(cf, text="只试 WriteFile（快）", variable=self.chan_mode,
-                       value="write", font=(FONT, 8), fg=C_TEXT, bg=C_BG,
+                       value="write", font=FT(8), fg=C_TEXT, bg=C_BG,
                        activebackground=C_BG,
-                       selectcolor="#eaf5ea").pack(side="left", padx=4)
+                       selectcolor="#eaf5ea").pack(side="left", padx=S(4))
         tk.Radiobutton(cf, text="两种通道都试（慢一倍）", variable=self.chan_mode,
-                       value="both", font=(FONT, 8), fg=C_TEXT, bg=C_BG,
+                       value="both", font=FT(8), fg=C_TEXT, bg=C_BG,
                        activebackground=C_BG,
                        selectcolor="#eaf5ea").pack(side="left")
         bf = tk.Frame(w, bg=C_BG)
-        bf.pack(fill="x", padx=14, pady=(12, 6))
-        self.btn_go = tk.Button(bf, text="开始扫描", font=(FONT, 9), fg="white",
+        bf.pack(fill="x", padx=S(14), pady=(S(12), S(6)))
+        self.btn_go = tk.Button(bf, text="开始扫描", font=FT(9), fg="white",
                                 bg=C_ACC, activebackground=C_ACC_DK,
                                 activeforeground="white", relief="flat",
-                                padx=10, pady=4, cursor="hand2",
+                                padx=S(10), pady=S(4), cursor="hand2",
                                 command=self.start)
         self.btn_go.pack(side="left")
-        self.btn_got = tk.Button(bf, text="有感，就它了", font=(FONT, 9),
+        self.btn_got = tk.Button(bf, text="有感，就它了", font=FT(9),
                                  fg="#1e7e34", bg="#e6f4ea", relief="flat",
-                                 padx=10, pady=4, cursor="hand2",
+                                 padx=S(10), pady=S(4), cursor="hand2",
                                  state="disabled", command=self.got)
-        self.btn_got.pack(side="left", padx=4)
-        tk.Button(bf, text="下一条", font=(FONT, 9), fg=C_TEXT, bg="#f0f1f4",
-                  relief="flat", padx=10, pady=4, cursor="hand2",
+        self.btn_got.pack(side="left", padx=S(4))
+        tk.Button(bf, text="下一条", font=FT(9), fg=C_TEXT, bg="#f0f1f4",
+                  relief="flat", padx=S(10), pady=S(4), cursor="hand2",
                   command=self.skip).pack(side="left")
-        tk.Button(bf, text="停", font=(FONT, 9), fg="#c0392b", bg="#fdecea",
-                  relief="flat", padx=10, pady=4, cursor="hand2",
-                  command=self.stop).pack(side="left", padx=4)
-        self.btn_undo = tk.Button(bf, text="撤销上次", font=(FONT, 9),
+        tk.Button(bf, text="停", font=FT(9), fg="#c0392b", bg="#fdecea",
+                  relief="flat", padx=S(10), pady=S(4), cursor="hand2",
+                  command=self.stop).pack(side="left", padx=S(4))
+        self.btn_undo = tk.Button(bf, text="撤销上次", font=FT(9),
                                   fg=C_TEXT, bg="#f0f1f4", relief="flat",
-                                  padx=8, pady=4, cursor="hand2",
+                                  padx=S(8), pady=S(4), cursor="hand2",
                                   state="disabled", command=self.undo)
         self.btn_undo.pack(side="left")
         tk.Label(w, text="全程手柄都在通电状态，扫完记得停一下；"
                          "中途卡住震个不停就点「停」再关窗口。",
-                 font=(FONT, 7), fg="#a0a4ad", bg=C_BG, wraplength=400,
-                 justify="left").pack(anchor="w", padx=14, pady=(6, 0))
+                 font=FT(7), fg="#a0a4ad", bg=C_BG, wraplength=S(400),
+                 justify="left").pack(anchor="w", padx=S(14), pady=(S(6), S(0)))
         w.protocol("WM_DELETE_WINDOW", self.close)
         self._on_pick()
 
@@ -1995,9 +1998,42 @@ class MotorScan:
                             parent=self.win)
 
 
+def _single_instance():
+    """单实例：已经在跑就把旧窗口翻到前台，自己退掉。
+    免得用户每次双击都新开一个进程——多个实例同时读手柄、同时建虚拟
+    Xbox 手柄，游戏里会出现双重输入。互斥名带版本号，旧版不挡新版。
+    任何一步出错都放行（宁可多开一个，也不能打不开）。"""
+    try:
+        import ctypes
+        name = "BetopXboxMapper_Single_%s" % updater.APP_VERSION
+        h = ctypes.windll.kernel32.CreateMutexW(None, False, name)
+        if not h:
+            return
+        if ctypes.windll.kernel32.GetLastError() != 183:   # ERROR_ALREADY_EXISTS
+            return
+        hwnd = ctypes.windll.user32.FindWindowW(None,
+                                               "北通游戏厅 · 手柄映射器")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)       # SW_RESTORE
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        sys.exit(0)
+    except SystemExit:
+        raise
+    except Exception:
+        return
+
+
 def main():
+    # 高分屏：必须在建窗口前声明 DPI 感知，否则 Tk 按 96 DPI 初始化，
+    # 150% 缩放的屏上字只有正常 2/3 大（padui 导入时也设过一次，这里双保险）
+    try:
+        padui.enable_dpi()
+    except Exception:
+        pass
+    _single_instance()
     root = tk.Tk()
     app = App(root)
+
     # App.__init__ 里已经挂过了；这里再挂一次防止被覆盖。
     # 关窗口 = 藏到托盘（没托盘就直接退），真退走 app.quit_app()：
     # 停娱乐模式 / 停闹钟 / 马达归零 / 撤托盘，一样都不会漏

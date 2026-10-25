@@ -24,6 +24,9 @@ except Exception:
     tk = None
     messagebox = None
 
+# W/H 是类属性，导入时就求值，FT/S 必须在模块级就能拿到
+from padui import FT, S
+
 try:
     import alarm          # 复用闹钟那套铃声
 except Exception:
@@ -358,7 +361,7 @@ if tk is not None:
     class NotifyDialog(tk.Toplevel):
         """手机通知设置窗"""
 
-        W, H = 462, 620
+        W, H = S(462), S(620)
         FONT = "Microsoft YaHei UI"
 
         def __init__(self, master, app):
@@ -396,150 +399,151 @@ if tk is not None:
 
         # -------------------------------------------------------- 构建
         def _build(self):
+            from padui import FT, S
             F = self.FONT
             hd = tk.Frame(self, bg="#fff", height=64)
             hd.pack(fill="x")
             hd.pack_propagate(False)
-            tk.Label(hd, text="📱  手机通知", font=(F, 15, "bold"),
-                     fg="#22252b", bg="#fff").pack(side="left", padx=22)
-            tk.Label(hd, text="来消息就震一下", font=(F, 9),
-                     fg="#8a8f99", bg="#fff").pack(side="right", padx=22)
+            tk.Label(hd, text="📱  手机通知", font=FT(15, "bold"),
+                     fg="#22252b", bg="#fff").pack(side="left", padx=S(22))
+            tk.Label(hd, text="来消息就震一下", font=FT(9),
+                     fg="#8a8f99", bg="#fff").pack(side="right", padx=S(22))
 
             box = tk.Frame(self, bg="#fff", highlightthickness=1,
                            highlightbackground="#e5e7ec")
-            box.pack(fill="both", expand=True, padx=20, pady=14)
+            box.pack(fill="both", expand=True, padx=S(20), pady=S(14))
 
             # 开关
             self.on_var = tk.BooleanVar(value=bool(self.km.get("notify_on")))
             tk.Checkbutton(box, text="开启（局域网接收手机通知）",
-                           variable=self.on_var, font=(F, 10, "bold"),
+                           variable=self.on_var, font=FT(10, "bold"),
                            fg="#3a3e46", bg="#fff", activebackground="#fff",
                            selectcolor="#fff",
-                           command=self._on_toggle).pack(anchor="w", padx=18,
-                                                        pady=(14, 4))
+                           command=self._on_toggle).pack(anchor="w", padx=S(18),
+                                                        pady=(S(14), S(4)))
 
             # 地址
-            self.url_lbl = tk.Label(box, text="", font=("Consolas", 10),
+            self.url_lbl = tk.Label(box, text="", font=FT(10, family="Consolas"),
                                     fg="#1e7e34", bg="#eef7f0",
-                                    wraplength=390, justify="left")
-            self.url_lbl.pack(fill="x", padx=18, pady=(2, 4))
+                                    wraplength=S(390), justify="left")
+            self.url_lbl.pack(fill="x", padx=S(18), pady=(S(2), S(4)))
             br = tk.Frame(box, bg="#fff")
-            br.pack(fill="x", padx=18, pady=(0, 6))
-            tk.Button(br, text="复制地址", font=(F, 8), bg="#f0f1f4",
-                      relief="flat", padx=8, pady=3, cursor="hand2",
+            br.pack(fill="x", padx=S(18), pady=(S(0), S(6)))
+            tk.Button(br, text="复制地址", font=FT(8), bg="#f0f1f4",
+                      relief="flat", padx=S(8), pady=S(3), cursor="hand2",
                       command=self._copy).pack(side="left")
-            tk.Button(br, text="放行防火墙", font=(F, 8), bg="#f0f1f4",
-                      relief="flat", padx=8, pady=3, cursor="hand2",
-                      command=self._fw).pack(side="left", padx=6)
-            tk.Button(br, text="测试震动", font=(F, 8), fg="white",
+            tk.Button(br, text="放行防火墙", font=FT(8), bg="#f0f1f4",
+                      relief="flat", padx=S(8), pady=S(3), cursor="hand2",
+                      command=self._fw).pack(side="left", padx=S(6))
+            tk.Button(br, text="测试震动", font=FT(8), fg="white",
                       bg="#e0334a", activebackground="#c02a3e",
-                      activeforeground="white", relief="flat", padx=8, pady=3,
+                      activeforeground="white", relief="flat", padx=S(8), pady=S(3),
                       cursor="hand2", command=self.ns.test).pack(side="left")
 
             # 端口
             pr = tk.Frame(box, bg="#fff")
-            pr.pack(fill="x", padx=18, pady=(4, 2))
-            tk.Label(pr, text="端口", font=(F, 9), fg="#3a3e46",
+            pr.pack(fill="x", padx=S(18), pady=(S(4), S(2)))
+            tk.Label(pr, text="端口", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left")
             self.port_var = tk.StringVar(value=str(self.ns.port))
             e = tk.Entry(pr, textvariable=self.port_var, width=7,
-                         font=("Consolas", 10), relief="flat", bg="#f4f5f8",
+                         font=FT(10, family="Consolas"), relief="flat", bg="#f4f5f8",
                          justify="center")
-            e.pack(side="left", padx=8)
+            e.pack(side="left", padx=S(8))
             e.bind("<Return>", lambda _e: self._apply())
 
             # 铃声
             rr = tk.Frame(box, bg="#fff")
-            rr.pack(fill="x", padx=18, pady=(10, 2))
-            tk.Label(rr, text="震动样式", font=(F, 9), fg="#3a3e46",
+            rr.pack(fill="x", padx=S(18), pady=(S(10), S(2)))
+            tk.Label(rr, text="震动样式", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left")
             names = alarm.ring_names() if alarm else ["连续猛震"]
             self.ring_var = tk.StringVar(value=names[min(
                 self.ns.ring, len(names) - 1)])
             om = tk.OptionMenu(rr, self.ring_var, *names)
-            om.config(font=(F, 9), bg="#fff", relief="flat", width=11,
+            om.config(font=FT(9), bg="#fff", relief="flat", width=11,
                       highlightthickness=0, cursor="hand2")
             try:
-                om["menu"].config(font=(F, 9), bg="#fff")
+                om["menu"].config(font=FT(9), bg="#fff")
             except Exception:
                 pass
-            om.pack(side="left", padx=8)
+            om.pack(side="left", padx=S(8))
             self.ring_var.trace_add("write", lambda *_a: self._apply())
 
             # 强度 + 时长
             sr = tk.Frame(box, bg="#fff")
-            sr.pack(fill="x", padx=18, pady=(6, 2))
-            tk.Label(sr, text="强度", font=(F, 9), fg="#3a3e46",
+            sr.pack(fill="x", padx=S(18), pady=(S(6), S(2)))
+            tk.Label(sr, text="强度", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left")
             self.st_var = tk.DoubleVar(value=self.ns.strength)
             tk.Scale(sr, from_=0.1, to=3.0, resolution=0.05,
                      variable=self.st_var, orient="horizontal", length=150,
                      bg="#fff", highlightthickness=0, troughcolor="#f0f1f4",
                      command=lambda _v: self._apply()).pack(side="left",
-                                                            padx=6)
-            tk.Label(sr, text="秒", font=(F, 9), fg="#3a3e46",
+                                                            padx=S(6))
+            tk.Label(sr, text="秒", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left", padx=(10, 0))
             self.sec_var = tk.StringVar(value="%.1f" % self.ns.seconds)
             tk.Spinbox(sr, from_=0.3, to=10, increment=0.3, width=4,
-                       textvariable=self.sec_var, font=("Consolas", 10),
+                       textvariable=self.sec_var, font=FT(10, family="Consolas"),
                        relief="flat", bg="#f4f5f8", justify="center",
-                       command=self._apply).pack(side="left", padx=4)
+                       command=self._apply).pack(side="left", padx=S(4))
 
             # 过滤
             fr = tk.Frame(box, bg="#fff")
-            fr.pack(fill="x", padx=18, pady=(12, 2))
+            fr.pack(fill="x", padx=S(18), pady=(S(12), S(2)))
             self.mode_var = tk.StringVar(value=MODES.get(
                 self.km.get("notify_filter_mode", "all"), MODES["all"]))
             om2 = tk.OptionMenu(fr, self.mode_var, *MODES.values())
-            om2.config(font=(F, 9), bg="#fff", relief="flat", width=8,
+            om2.config(font=FT(9), bg="#fff", relief="flat", width=8,
                        highlightthickness=0, cursor="hand2")
             try:
-                om2["menu"].config(font=(F, 9), bg="#fff")
+                om2["menu"].config(font=FT(9), bg="#fff")
             except Exception:
                 pass
             om2.pack(side="left")
             tk.Label(fr, text="关键词（逗号分隔，留空=全部通知）",
-                     font=(F, 8), fg="#8a8f99", bg="#fff").pack(side="left",
-                                                                padx=6)
+                     font=FT(8), fg="#8a8f99", bg="#fff").pack(side="left",
+                                                                padx=S(6))
             self.flt_var = tk.StringVar(value=self.km.get("notify_filter", ""))
-            tk.Entry(fr, textvariable=self.flt_var, width=22, font=(F, 9),
-                     relief="flat", bg="#f4f5f8").pack(side="left", padx=4)
+            tk.Entry(fr, textvariable=self.flt_var, width=22, font=FT(9),
+                     relief="flat", bg="#f4f5f8").pack(side="left", padx=S(4))
             self.flt_var.trace_add("write", lambda *_a: self._apply())
             self.mode_var.trace_add("write", lambda *_a: self._apply())
 
             # 冷却 + 令牌
             cr = tk.Frame(box, bg="#fff")
-            cr.pack(fill="x", padx=18, pady=(8, 2))
-            tk.Label(cr, text="同一个 app 冷却", font=(F, 9), fg="#3a3e46",
+            cr.pack(fill="x", padx=S(18), pady=(S(8), S(2)))
+            tk.Label(cr, text="同一个 app 冷却", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left")
             self.cd_var = tk.StringVar(
                 value=str(self.km.get("notify_cooldown", 3)))
             tk.Spinbox(cr, from_=0, to=60, increment=1, width=4,
-                       textvariable=self.cd_var, font=("Consolas", 10),
+                       textvariable=self.cd_var, font=FT(10, family="Consolas"),
                        relief="flat", bg="#f4f5f8", justify="center",
-                       command=self._apply).pack(side="left", padx=6)
-            tk.Label(cr, text="秒", font=(F, 9), fg="#8a8f99",
+                       command=self._apply).pack(side="left", padx=S(6))
+            tk.Label(cr, text="秒", font=FT(9), fg="#8a8f99",
                      bg="#fff").pack(side="left")
-            tk.Label(cr, text="口令", font=(F, 9), fg="#3a3e46",
+            tk.Label(cr, text="口令", font=FT(9), fg="#3a3e46",
                      bg="#fff").pack(side="left", padx=(14, 0))
             self.tok_var = tk.StringVar(value=self.km.get("notify_token", ""))
-            tk.Entry(cr, textvariable=self.tok_var, width=10, font=(F, 9),
-                     relief="flat", bg="#f4f5f8").pack(side="left", padx=4)
+            tk.Entry(cr, textvariable=self.tok_var, width=10, font=FT(9),
+                     relief="flat", bg="#f4f5f8").pack(side="left", padx=S(4))
 
             # 最近收到
-            tk.Label(box, text="最近收到", font=(F, 9, "bold"), fg="#3a3e46",
-                     bg="#fff").pack(anchor="w", padx=18, pady=(14, 2))
-            self.txt = tk.Text(box, height=7, font=("Consolas", 9),
+            tk.Label(box, text="最近收到", font=FT(9, "bold"), fg="#3a3e46",
+                     bg="#fff").pack(anchor="w", padx=S(18), pady=(S(14), S(2)))
+            self.txt = tk.Text(box, height=7, font=FT(9, family="Consolas"),
                                relief="flat", bg="#f7f8fa", fg="#3a3e46",
                                highlightthickness=0, wrap="word")
-            self.txt.pack(fill="x", padx=18)
+            self.txt.pack(fill="x", padx=S(18))
             self.txt.config(state="disabled")
 
             # 手机端怎么配
             self.help_lbl = tk.Label(
-                box, text="", font=(F, 8), fg="#8a8f99", bg="#fff",
-                wraplength=400, justify="left")
-            self.help_lbl.pack(anchor="w", padx=18, pady=(10, 4))
+                box, text="", font=FT(8), fg="#8a8f99", bg="#fff",
+                wraplength=S(400), justify="left")
+            self.help_lbl.pack(anchor="w", padx=S(18), pady=(S(10), S(4)))
             self._upd_help()
 
         # -------------------------------------------------------- 动作
