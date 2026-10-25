@@ -247,7 +247,8 @@ class PadView:
                                  (self.knob_r, "RX", "RY", "RS")):
             it, cx, cy = knob
             dx = a.get(ax, 0.0) * 15
-            dy = a.get(ay, 0.0) * 15
+            # 摇杆值正 = 上推（XInput 约定），但画布 y 向下为正，要取反
+            dy = -a.get(ay, 0.0) * 15
             cv.coords(it, cx - 25 + dx, cy - 25 + dy, cx + 25 + dx, cy + 25 + dy)
             cv.itemconfig(it, fill=(C_PRESS if b.get(nm) else P_KNOB))
 

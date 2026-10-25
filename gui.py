@@ -1402,10 +1402,10 @@ class App:
             a = self.state.get("axes", {})
             self.pad_view.set_state(b, a)
             for k, bar in self.bars.items():
-                self.draw_bar(bar, a.get(k, 0.0))
+                self.draw_bar(bar, a.get(k, 0.0), k)
         self.root.after(70, self.pump)
 
-    def draw_bar(self, cv, v):
+    def draw_bar(self, cv, v, k=""):
         cv.delete("all")
         w = int(cv["width"]); h = int(cv["height"])
         mid = w // 2
@@ -1415,6 +1415,12 @@ class App:
             cv.create_rectangle(mid, 2, mid + n, h - 2, fill=color, outline="")
         else:
             cv.create_rectangle(mid - n, 2, mid, h - 2, fill=color, outline="")
+        if k in ("LY", "RY"):
+            # 纵向轴：横条看不出哪头是上，标出来（推上=往右↑填蓝）
+            cv.create_text(5, h // 2, text="↓", font=("Consolas", 7),
+                           fill="#c2c6cd")
+            cv.create_text(w - 5, h // 2, text="↑", font=("Consolas", 7),
+                           fill="#c2c6cd")
 
     # ------------------------------------------------------------ 改键
     def rebind(self, name):
