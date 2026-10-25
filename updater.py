@@ -18,7 +18,7 @@ try:
 except Exception:          # 无界面环境下也能当纯模块用
     tk = None
 
-APP_VERSION = "1.0.27"
+APP_VERSION = "1.0.28"
 REPO = "huangjinkun2006/BetopXboxMapper"
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO
 API_RELEASES = "https://api.github.com/repos/%s/releases?per_page=20" % REPO

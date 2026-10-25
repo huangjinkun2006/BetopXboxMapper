@@ -57,6 +57,11 @@ from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
 C_RED = C_ACC          # 旧变量名兼容
 C_RED_DK = C_ACC_DK
 
+# ---- Win11 化（v1.0.28）：Mica 窗口 + 深色标题栏 + 圆角卡片 ----
+import win11ui
+C_BG = win11ui.HOLE          # 底色换成卡片之间的"缝隙色"（比原 C_BG 柔和）
+C_LINE = "#e3e5ea"
+
 
 class App:
     def __init__(self, root):
@@ -66,6 +71,7 @@ class App:
         root.resizable(False, False)
         root.configure(bg=C_BG)
         apply_icon(root)
+        win11ui.apply(root)          # Mica + 深色标题栏（老系统静默跳过）
 
         self.km = betop.load_keymap()
         self.dev = None
@@ -481,15 +487,15 @@ class App:
         row = tk.Frame(main, bg=C_BG)
         row.pack(fill="x", padx=18, pady=14)
 
-        lc = tk.Frame(row, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
+        lc = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
         lc.pack(side="left")
-        hdr = tk.Frame(lc, bg=C_CARD)
+        hdr = tk.Frame(lc.body, bg=C_CARD)
         hdr.pack(fill="x", padx=16, pady=(10, 2))
         tk.Label(hdr, text="实时手柄状态", font=(FONT, 11, "bold"), fg=C_TEXT,
                  bg=C_CARD).pack(side="left")
         tk.Label(hdr, text="按下会亮绿 · 点任意键可重新绑定", font=(FONT, 8),
                  fg=C_SUB, bg=C_CARD).pack(side="left", padx=8)
-        self.canvas = tk.Canvas(lc, width=480, height=474, bg=C_CARD,
+        self.canvas = tk.Canvas(lc.body, width=480, height=474, bg=C_CARD,
                                 highlightthickness=0)
         self.canvas.pack(padx=8, pady=(2, 10))
         self.pad_view = PadView(self.canvas)
@@ -497,21 +503,31 @@ class App:
 
         # 右栏内容多（四马达那堆控件），窗口高度装不下 → 做成滚动容器，
         # 鼠标放右栏上滚轮滚，滚到头不影响别处
-        rc_wrap = tk.Frame(row, bg=C_CARD, highlightthickness=1,
-                           highlightbackground=C_LINE)
+        rc_wrap = tk.Frame(row, bg=C_BG)
         rc_wrap.pack(side="left", fill="both", padx=(10, 6), ipadx=2)
-        rc_cv = tk.Canvas(rc_wrap, bg=C_CARD, highlightthickness=0)
+        rc_cv = tk.Canvas(rc_wrap, bg=C_BG, highlightthickness=0)
         rc_sb = tk.Scrollbar(rc_wrap, orient="vertical", command=rc_cv.yview)
         rc_cv.configure(yscrollcommand=rc_sb.set)
         rc_sb.pack(side="right", fill="y")
         rc_cv.pack(side="left", fill="both", expand=True)
         rc = tk.Frame(rc_cv, bg=C_CARD)
-        rc_win = rc_cv.create_window((0, 0), window=rc, anchor="nw")
+        rc_win = rc_cv.create_window((14, 14), window=rc, anchor="nw")
+
+        def _rc_round(_e=None):
+            """圆角白卡片画在滚动 canvas 最底层，内容窗口四周内缩 14px"""
+            rc_cv.delete("cardbg")
+            ww, hh = rc_cv.winfo_width(), rc_cv.winfo_height()
+            if ww > 8 and hh > 8:
+                rc_cv.create_polygon(win11ui.Card._rr(1, 1, ww - 1, hh - 1, 12),
+                                     fill=C_CARD, outline=C_LINE, smooth=True,
+                                     tags="cardbg")
+                rc_cv.tag_lower("cardbg")
 
         def _rc_on_cfg(_e):
             rc_cv.configure(scrollregion=rc_cv.bbox("all"))
             rc_cv.itemconfigure(rc_win, width=rc_cv.winfo_width() -
-                                rc_sb.winfo_width())
+                                rc_sb.winfo_width() - 28)
+            _rc_round()
 
         rc.bind("<Configure>", _rc_on_cfg)
         rc_cv.bind("<Configure>", _rc_on_cfg)
@@ -684,9 +700,9 @@ class App:
         self.btn_clr_custom.pack(side="right")
 
         # ---------- 底部：摇杆 / 扳机 ----------
-        bc = tk.Frame(main, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
+        bc = win11ui.Card(main, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
         bc.pack(fill="x", padx=18, pady=(0, 14))
-        head = tk.Frame(bc, bg=C_CARD)
+        head = tk.Frame(bc.body, bg=C_CARD)
         head.pack(fill="x", padx=16, pady=(10, 4))
         tk.Label(head, text="摇杆 / 扳机", font=(FONT, 11, "bold"), fg=C_TEXT,
                  bg=C_CARD).pack(side="left")
@@ -698,7 +714,7 @@ class App:
         self.dz_lbl = tk.Label(head, text=f"{self.dz.get():.2f}",
                                font=("Consolas", 9), fg=C_TEXT, bg=C_CARD, width=4)
         self.dz_lbl.pack(side="right")
-        bars = tk.Frame(bc, bg=C_CARD)
+        bars = tk.Frame(bc.body, bg=C_CARD)
         bars.pack(fill="x", padx=16, pady=(0, 12))
         self.bars = {}
         for i, k in enumerate(betop.AXIS_TARGETS):

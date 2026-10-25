@@ -22,6 +22,10 @@ import betop
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
                    C_LINE, C_OK, C_HL, FONT, PadView, apply_icon)
 
+import win11ui
+C_BG = win11ui.HOLE
+C_LINE = "#e3e5ea"
+
 BTN_STEPS = [
     ("A", "A 键 — 右边靠下那个（MC 里跳跃）"),
     ("B", "B 键 — 右边靠右那个（MC 里潜行/放下）"),
@@ -46,6 +50,7 @@ class Wizard:
         root.resizable(False, False)
         root.configure(bg=C_BG)
         apply_icon(root)
+        win11ui.apply(root)
 
         self.dev = None
         self.km = betop.load_keymap()
@@ -101,8 +106,9 @@ class Wizard:
         row.pack(fill="x", padx=18, pady=14)
 
         # 左：手柄图
-        lc = tk.Frame(row, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
-        lc.pack(side="left")
+        lc_card = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=3)
+        lc_card.pack(side="left")
+        lc = lc_card.body
         hdr = tk.Frame(lc, bg=C_CARD)
         hdr.pack(fill="x", padx=16, pady=(10, 2))
         tk.Label(hdr, text="按住这个键", font=(FONT, 11, "bold"), fg=C_TEXT,
@@ -115,8 +121,9 @@ class Wizard:
         self.pv = PadView(self.canvas)
 
         # 右：提示 / 进度 / 日志
-        rc = tk.Frame(row, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
-        rc.pack(side="left", fill="both", ipadx=10)
+        rc_card = win11ui.Card(row, radius=12, bg=C_CARD, outline=C_LINE, pad=6)
+        rc_card.pack(side="left", fill="both", padx=(10, 0))
+        rc = rc_card.body
         tk.Label(rc, textvariable=self.prog, font=(FONT, 9), fg=C_SUB,
                  bg=C_CARD).pack(anchor="w", padx=18, pady=(14, 2))
         tk.Label(rc, textvariable=self.tip, font=(FONT, 13, "bold"), fg=C_TEXT,
@@ -135,15 +142,15 @@ class Wizard:
         self.cdbar.pack(side="left", padx=10)
         tk.Frame(rc, bg=C_LINE, height=1).pack(fill="x", padx=16)
         btns = tk.Frame(rc, bg=C_CARD)
-        btns.pack(fill="x", padx=18, pady=10)
+        btns.pack(fill="x", padx=12, pady=10)
         for t, cmd in (("跳过此键", self.skip), ("再等一会", self.more_time),
                        ("重新开始", self.restart)):
             tk.Button(btns, text=t, font=(FONT, 9), fg=C_TEXT, bg="#f4f5f8",
-                      activebackground="#e8e9ee", relief="flat", padx=12, pady=5,
-                      cursor="hand2", command=cmd).pack(side="left", padx=(0, 8))
+                      activebackground="#e8e9ee", relief="flat", padx=9, pady=5,
+                      cursor="hand2", command=cmd).pack(side="left", padx=(0, 5))
         tk.Label(rc, text="识别记录", font=(FONT, 9, "bold"), fg=C_TEXT,
                  bg=C_CARD).pack(anchor="w", padx=18, pady=(6, 2))
-        self.logbox = tk.Text(rc, width=38, height=12, font=("Consolas", 9),
+        self.logbox = tk.Text(rc, width=35, height=12, font=("Consolas", 9),
                               bg="#fafbfc", fg="#4a4e57", relief="flat",
                               highlightthickness=1, highlightbackground=C_LINE)
         self.logbox.pack(padx=18, pady=(0, 14))
