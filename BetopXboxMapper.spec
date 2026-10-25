@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('icon.ico', '.')]
 binaries = []
-hiddenimports = []
+hiddenimports = ['hidui']
 tmp_ret = collect_all('vgamepad')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 

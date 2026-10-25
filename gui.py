@@ -246,6 +246,14 @@ class App:
         except Exception as e:
             messagebox.showerror("手机通知", str(e), parent=self.root)
 
+    def open_hidhide(self):
+        """HidHide 完整设置：总开关 / 黑名单 / 白名单（替代官方客户端）"""
+        try:
+            import hidui
+            hidui.HidHideDialog(self.root, self)
+        except Exception as e:
+            messagebox.showerror("设备屏蔽", str(e), parent=self.root)
+
     def apply_notify_cfg(self):
         """开关 / 端口变了就重启监听"""
         ns = self.notify
@@ -412,6 +420,7 @@ class App:
         nav_item("🖥 设备检测", self.show_device)
         nav_header("工具箱")
         nav_item("🕹 键位映射", None, active=True)
+        nav_item("🛡 设备屏蔽（HidHide）", self.open_hidhide)
         nav_item("🔑 键位识别向导", self.open_wizard)
         nav_item("🧪 震动实验室", self.open_lab)
         nav_item("⏰ 震动闹钟", self.open_alarm)
@@ -457,6 +466,9 @@ class App:
                                   relief="flat", padx=10, pady=6,
                                   cursor="hand2", command=self.toggle_hide)
         self.btn_hide.pack(side="right", padx=(0, 10))
+        tk.Button(inner, text="⚙ 名单", font=(FONT, 8), fg=C_SUB,
+                  relief="flat", padx=8, pady=7, cursor="hand2",
+                  command=self.open_hidhide).pack(side="right", padx=(0, 6))
         self._refresh_hide_btn()
 
         # ---------- 中央：手柄图 + 右侧状态 ----------
