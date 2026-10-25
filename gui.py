@@ -26,6 +26,8 @@ except Exception:
 
 import betop
 import guide
+import hidhide
+import hidraw
 import lab
 import alarm
 import tray
@@ -358,8 +360,8 @@ class App:
                                  padx=22, pady=6, cursor="hand2",
                                  command=self.toggle)
         self.btn_run.pack(side="right")
-        # 屏蔽物理手柄：独占打开 HID 接口，游戏就枚举不到这把北通了，
-        # 屏幕上只剩虚拟 Xbox 那一把（原神不然会显示两个手柄）
+        # 屏蔽物理手柄：走 HidHide 内核过滤驱动（v1.0.12 起替换独占方案，
+        # 独占打不过 XboxService / dwm 这些常年持有手柄句柄的系统组件）
         self.btn_hide = tk.Button(inner, text="屏蔽物理手柄", font=(FONT, 9),
                                   relief="flat", padx=10, pady=6,
                                   cursor="hand2", command=self.toggle_hide)
@@ -392,8 +394,8 @@ class App:
                                 fg=C_TEXT, bg=C_CARD, justify="left")
         self.dev_lbl.pack(anchor="w", padx=14)
         tk.Label(rc, text="游戏里出现两个手柄？点上面「屏蔽物理手柄」，\n"
-                         "让游戏只看到虚拟 Xbox 那一把。\n"
-                         "（要在进游戏之前点，游戏先占上就挡不住了）",
+                         "让游戏只看到虚拟 Xbox 那一把（HidHide 驱动级屏蔽）。\n"
+                         "随时可点，映射运行中也行。",
                  font=(FONT, 8), fg=C_SUB, bg=C_CARD,
                  justify="left").pack(anchor="w", padx=14, pady=(4, 0))
         self.mode_lbl = tk.Label(rc, text="解码：未连接", font=(FONT, 8), fg=C_SUB,
@@ -561,12 +563,18 @@ class App:
         self._refresh_status()
 
     def start_mapping(self, quiet=False):
-        """开映射（独占与否看 km["exclusive"]）。返回 True/False"""
+        """开映射。返回 True/False"""
         try:
-            self.dev = betop.open_device(
-                exclusive=bool(self.km.get("exclusive")))
+            self.dev = betop.open_device()
             self.pad = betop.VirtualPad(rumble_callback=self.on_rumble)
         except Exception as e:
+            # 半途失败要把已经打开的手柄句柄关掉，不然泄漏一个独占路障
+            if getattr(self, "dev", None):
+                try:
+                    self.dev.close()
+                except Exception:
+                    pass
+                self.dev = None
             if not quiet:
                 messagebox.showerror("启动失败",
                                      f"{e}\n\n确认 ViGEmBus 驱动装好了没")
@@ -586,7 +594,7 @@ class App:
         self.running = True
         self.btn_run.config(text="停止映射", bg="#5a5e66")
         be = "HidP 精确解码" if self.dev.use_hidp else "字节兜底"
-        hid = " · 物理手柄已屏蔽" if self.km.get("exclusive") else ""
+        hid = " · 物理手柄已屏蔽" if self.km.get("shield") else ""
         self.status.set(f"运行中（{be}{hid}）— 去开基岩版 MC")
         self.mode_lbl.config(text="解码：" + be)
         self._refresh_status()
@@ -595,32 +603,88 @@ class App:
         return True
 
     # ------------------------------------------------------- 屏蔽物理手柄
+    def _shield_state(self):
+        """以 HidHide 驱动里的实际名单为准"""
+        if not hidhide.installed():
+            return None
+        try:
+            path, _ = hidraw.find_gamepad(betop.VID, None)
+        except Exception:
+            return None
+        return hidhide.is_shielded(hidhide.instance_path(path))
+
     def _refresh_hide_btn(self):
-        on = bool(self.km.get("exclusive"))
-        self.btn_hide.config(text="物理手柄已屏蔽" if on else "屏蔽物理手柄",
-                             bg=("#e6f4ea" if on else "#f0f1f4"),
-                             fg=("#1e7e34" if on else C_TEXT))
+        on = self._shield_state()
+        if on is None:
+            self.btn_hide.config(text="屏蔽物理手柄（需装 HidHide）",
+                                 bg="#f0f1f4", fg=C_SUB)
+        elif on:
+            self.btn_hide.config(text="物理手柄已屏蔽",
+                                 bg="#e6f4ea", fg="#1e7e34")
+        else:
+            self.btn_hide.config(text="屏蔽物理手柄", bg="#f0f1f4", fg=C_TEXT)
+
+    def _ensure_hidhide(self):
+        """没装 HidHide 就引导安装。装好返回 True"""
+        if hidhide.installed():
+            return True
+        src = os.path.join(os.path.dirname(HERE), "HidHide_x64.exe")
+        if not os.path.isfile(src):
+            src = os.path.join(HERE, "HidHide_x64.exe")
+        if os.path.isfile(src):
+            msg = ("屏蔽物理手柄需要 HidHide 内核过滤驱动（跟 ViGEmBus 同一家"
+                   "出的，用来把物理手柄从游戏眼前藏掉）。\n\n"
+                   "已经附带好了安装包，点「是」现在装（会弹 UAC 授权）。")
+            if not messagebox.askyesno("需要装 HidHide", msg):
+                return False
+            self.status.set("正在安装 HidHide ……")
+            self._refresh_status()
+            ok = hidhide.install_silent(src)
+        else:
+            msg = ("屏蔽物理手柄需要 HidHide 内核过滤驱动。\n\n"
+                   "点「是」去官方页面下载安装（约 8MB），装完回来再点一次屏蔽。")
+            if not messagebox.askyesno("需要装 HidHide", msg):
+                return False
+            import webbrowser
+            webbrowser.open("https://github.com/nefarius/HidHide/releases")
+            return False
+        if not ok or not hidhide.installed():
+            messagebox.showerror("安装没完成",
+                                 "HidHide 没装上（可能 UAC 点了取消，或者装完"
+                                 "要重启）。\n可以手动跑目录里的 HidHide_x64.exe。")
+            return False
+        messagebox.showinfo("装好了", "HidHide 已安装，现在帮你把物理手柄屏蔽掉。")
+        return True
 
     def toggle_hide(self):
-        old = bool(self.km.get("exclusive"))
-        want = not old
-        self.km["exclusive"] = want
-        if self.running:
-            self.stop_mapping()
-            if not self.start_mapping(quiet=True):
-                # 打不开（多半是游戏已经占着手柄），把开关退回去
-                self.km["exclusive"] = old
-                self._refresh_hide_btn()
-                messagebox.showerror(
-                    "屏蔽失败",
-                    "手柄正被别的程序占着，挡不住它。\n\n"
-                    "常见原因：游戏 / Steam / 手柄测试页面已经先开着手柄了。\n"
-                    "先把它们全关掉，再点「屏蔽物理手柄」，\n"
-                    "最后才启动游戏 —— 顺序反了就挡不住。")
-                return
-        betop.save_keymap(self.km)      # 记住这个选择，下次开自动带上
-        self._refresh_hide_btn()
+        if not self._ensure_hidhide():
+            return
+        try:
+            path, _ = hidraw.find_gamepad(betop.VID, None)
+        except Exception as e:
+            messagebox.showerror("屏蔽失败", f"没找到手柄：{e}")
+            return
+        inst = hidhide.instance_path(path)
+        want = not hidhide.is_shielded(inst)
+        me = os.path.abspath(sys.argv[0])
+        self.status.set("正在改 HidHide 黑名单（弹 UAC 请点「是」）……")
+        self._refresh_status()
         if want:
+            # 把映射器 / 向导都加进白名单，不然屏蔽后自己反倒读不到手柄
+            for exe in {me, os.path.join(os.path.dirname(me), "BetopWizard.exe")}:
+                if os.path.isfile(exe) and not hidhide.in_app_allowlist(exe):
+                    hidhide.app_add(exe)
+            ok = hidhide.hide_add(inst)
+        else:
+            ok = hidhide.hide_rem(inst)
+        if not ok:
+            messagebox.showerror("屏蔽失败", "HidHide 命令没跑成（UAC 点了取消？）")
+            self._refresh_hide_btn()
+            return
+        self.km["shield"] = hidhide.is_shielded(inst)
+        betop.save_keymap(self.km)
+        self._refresh_hide_btn()
+        if self.km["shield"]:
             self.status.set("物理手柄已屏蔽 — 游戏里只剩虚拟 Xbox 那把")
         else:
             self.status.set("物理手柄恢复可见（游戏里会有两把）")
