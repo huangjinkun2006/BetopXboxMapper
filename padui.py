@@ -246,7 +246,7 @@ class PadView:
                       width=wd)
         if tint:
             out = Image.merge("RGBA",
-                              (*PadView._tint_rgb(img).split(), mask))
+                              (*PadView._tint_rgb(img, tint).split(), mask))
         else:
             out = Image.merge("RGBA", (*img.split(), mask))
         ph = ImageTk.PhotoImage(out)
