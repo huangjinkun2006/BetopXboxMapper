@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色卡片风 + Xbox 绿点缀，跟 PC 版那个界面保持一致 -->
+    <!-- .Bridge 是必须的：MainActivity 继承 AppCompatActivity，用普通 MaterialComponents 主题会崩 -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar.Bridge">
+        <item name="colorPrimary">#107c10</item>
+        <item name="colorPrimaryDark">#0c5f0c</item>
+        <item name="colorAccent">#107c10</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#f2f3f7</item>
+        <item name="android:navigationBarColor">#ffffff</item>
+    </style>
+</resources>

@@ -18,7 +18,7 @@ try:
 except Exception:          # 无界面环境下也能当纯模块用
     tk = None
 
-APP_VERSION = "1.0.8"
+APP_VERSION = "1.0.9"
 REPO = "huangjinkun2006/BetopXboxMapper"
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO
 API_RELEASES = "https://api.github.com/repos/%s/releases?per_page=20" % REPO
@@ -142,26 +142,37 @@ def _pack(d):
     }
 
 
+def is_pc_release(d):
+    """同一个仓库里还发安卓版（tag 用 android-vX.Y.Z），这里只认 PC 的 vX.Y.Z"""
+    tag = (d.get("tag_name") or "").strip()
+    return tag[:1].lower() == "v" and not tag.lower().startswith("android")
+
+
 def fetch_latest(timeout=6):
-    """拿最新 Release；拿不到就去列表里挑版本号最大的那个"""
+    """拿最新的 PC 版 Release。
+
+    不能直接吃 /releases/latest —— 那个仓库里安卓版也发在同一个地方，
+    谁后发谁就是 latest，会把 v1.0.9 判成"没更新"。所以拉列表自己筛。
+    """
     try:
-        return _pack(_get(API_LATEST, timeout)), None
+        lst = _get(API_RELEASES, timeout)
+        cands = [d for d in lst if is_pc_release(d)]
+        if cands:
+            best = max(cands, key=lambda d: ver_tuple(d.get("tag_name")))
+            return _pack(best), None
+        return None, "仓库里还没有 PC 版 Release"
     except Exception as e1:
         try:
-            lst = _get(API_RELEASES, timeout)
-            if lst:
-                best = max(lst, key=lambda d: ver_tuple(d.get("tag_name")))
-                return _pack(best), None
-            return None, "仓库里还没有 Release"
+            return _pack(_get(API_LATEST, timeout)), None
         except Exception as e2:
             return None, _err_text(e2 if not str(e1) else e1)
 
 
 def fetch_history(limit=8, timeout=6):
-    """最近几个版本，用于「历史更新」列表"""
+    """最近几个版本，用于「历史更新」列表（同样只列 PC 的）"""
     try:
-        lst = _get(API_RELEASES, timeout)[:limit]
-        return [_pack(d) for d in lst], None
+        lst = [d for d in _get(API_RELEASES, timeout) if is_pc_release(d)]
+        return [_pack(d) for d in lst[:limit]], None
     except Exception as e:
         return [], _err_text(e)
 

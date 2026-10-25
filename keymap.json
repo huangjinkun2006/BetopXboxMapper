@@ -4,8 +4,8 @@
   "deadzone": 0.12,
   "trigger_deadzone": 0.03,
   "rumble": true,
-  "rumble_fmt": 0,
-  "rumble_gain": 1.0,
+  "rumble_fmt": 28,
+  "rumble_gain": 3.0,
   "rumble_custom": null,
   "alarm_on": false,
   "alarm_time": "07:00",
@@ -23,7 +23,8 @@
     "START": 11,
     "LS": 14,
     "RS": 15,
-    "GUIDE": 12
+    "GUIDE": 12,
+    "FN": 105
   },
   "axes": {
     "LX": {
@@ -42,7 +43,7 @@
       "hi": 255,
       "center": 128,
       "fallback_byte": 6,
-      "invert": false
+      "invert": true
     },
     "RX": {
       "up": 1,
@@ -60,7 +61,7 @@
       "hi": 255,
       "center": 128,
       "fallback_byte": 8,
-      "invert": false
+      "invert": true
     },
     "LT": {
       "up": 2,
@@ -85,5 +86,6 @@
     "up": 1,
     "usage": 57,
     "fallback_byte": 2
-  }
+  },
+  "guide_seen": true
 }

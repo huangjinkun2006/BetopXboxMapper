@@ -36,7 +36,7 @@ KEYMAP_PATH = os.path.join(HERE, "keymap.json")
 
 # Xbox 360 手柄的目标键位
 BUTTON_TARGETS = ["A", "B", "X", "Y", "LB", "RB", "BACK", "START",
-                  "LS", "RS", "GUIDE"]
+                  "LS", "RS", "GUIDE", "FN"]
 DPAD_TARGETS = ["UP", "DOWN", "LEFT", "RIGHT"]
 AXIS_TARGETS = ["LX", "LY", "RX", "RY", "LT", "RT"]
 
@@ -80,6 +80,9 @@ def default_keymap():
             "BACK": 16, "START": 11,
             "LS": 14, "RS": 15,
             "GUIDE": 12,
+            # 2026-10-24 实测抓包：FN 键真的会上报，走 byte4 的 bit7，
+            # HidP 解出来是 usage 105（不在 SDL 映射串里，所以之前一直没发现）
+            "FN": 105,
         },
         "axes": {
             "LX": {"up": UP_GENERIC, "usage": U_X, "lo": 0, "hi": 255, "center": 128,
@@ -108,6 +111,8 @@ def load_keymap():
                 km.update(json.load(f))
         except Exception:
             pass
+    # 老配置文件没有 FN，补上（不然升级后 FN 又变摆设）
+    km.setdefault("buttons", {}).setdefault("FN", 105)
     return km
 
 
@@ -225,6 +230,8 @@ def parse_report(dev, report, km):
     if not pressed and len(report) >= 5:
         pressed = {i + 1 for i in range(16)
                    if (report[3 + i // 8] >> (i % 8)) & 1}
+        if len(report) > 4 and report[4] & 0x80:
+            pressed.add(105)          # FN 键（byte4 bit7）
 
     buttons = {}
     for tgt in BUTTON_TARGETS:
@@ -468,13 +475,20 @@ class VirtualPad:
         "RB": "XUSB_GAMEPAD_RIGHT_SHOULDER", "BACK": "XUSB_GAMEPAD_BACK",
         "START": "XUSB_GAMEPAD_START", "LS": "XUSB_GAMEPAD_LEFT_THUMB",
         "RS": "XUSB_GAMEPAD_RIGHT_THUMB", "GUIDE": "XUSB_GAMEPAD_GUIDE",
+        # FN 是这把多出来的第 12 个实体键，Xbox 360 没对应位，默认不映射；
+        # 想用的话在界面里把 FN 绑到任意 Xbox 键（写进 km["fn_out"]）
+        "FN": None,
         "UP": "XUSB_GAMEPAD_DPAD_UP", "DOWN": "XUSB_GAMEPAD_DPAD_DOWN",
         "LEFT": "XUSB_GAMEPAD_DPAD_LEFT", "RIGHT": "XUSB_GAMEPAD_DPAD_RIGHT",
     }
 
-    def __init__(self, rumble_callback=None):
+    def __init__(self, rumble_callback=None, fn_out=None):
         import vgamepad as vg
         self.vg = vg
+        # 实例级副本：FN 可以单独改绑，别改到类上污染其它实例
+        self.BUTTON_MAP = dict(self.BUTTON_MAP)
+        if fn_out and self.BUTTON_MAP.get(fn_out):
+            self.BUTTON_MAP["FN"] = self.BUTTON_MAP[fn_out]
         self.pad = vg.VX360Gamepad()
         self._rumble_cb = rumble_callback
         if rumble_callback:
