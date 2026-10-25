@@ -30,6 +30,7 @@ import hidhide
 import hidraw
 import lab
 import alarm
+import notify
 import tray
 import updater
 
@@ -46,6 +47,7 @@ BTN_CN = {"Y": "Y", "X": "X", "B": "B", "A": "A", "LB": "LB", "RB": "RB",
 
 # 托盘右键菜单 id
 T_SHOW, T_TOGGLE, T_ALARM, T_TEST, T_UPDATE, T_EXIT = 1, 2, 3, 4, 5, 6
+T_NOTIFY = 7
 
 # 配色 / 手柄图统一放在 padui.py（识别向导 wizard.py 用的是同一套）
 from padui import (C_BG, C_CARD, C_ACC, C_ACC_DK, C_ACC_LT, C_TEXT, C_SUB,
@@ -95,6 +97,9 @@ class App:
         self.alarm = alarm.AlarmClock(self.km,
                                       state_getter=lambda: self.state)
         self.alarm.start()
+        # 手机通知：局域网收一条 HTTP 请求就震一下（默认关，自己开）
+        self.notify = notify.NotifyServer(self.km, on_hit=self._notify_buzz)
+        root.after(500, self.apply_notify_cfg)
         root.after(600, self._init_tray)
         root.protocol("WM_DELETE_WINDOW", self.on_close_request)
 
@@ -120,6 +125,8 @@ class App:
             None,
             (T_ALARM, "⏰ 震动闹钟",
              bool(self.km.get("alarm_on")), True),
+            (T_NOTIFY, "📱 手机通知",
+             bool(self.km.get("notify_on")), True),
             (T_TEST, "试震一下", False, True),
             (T_UPDATE, "🔄 检查更新"),
             None,
@@ -145,6 +152,8 @@ class App:
                     self.toggle()
                 elif cmd == T_ALARM:
                     self.open_alarm()
+                elif cmd == T_NOTIFY:
+                    self.open_notify()
                 elif cmd == T_TEST:
                     self.test_rumble()
                 elif cmd == T_UPDATE:
@@ -199,6 +208,10 @@ class App:
             self.alarm.shutdown()
         except Exception:
             pass
+        try:
+            self.notify.stop()
+        except Exception:
+            pass
         time.sleep(0.25)
         try:
             if self.rumble is not None:
@@ -225,6 +238,82 @@ class App:
             alarm.AlarmDialog(self.root, self)
         except Exception as e:
             messagebox.showerror("震动闹钟", str(e), parent=self.root)
+
+    # ------------------------------------------------------------ 手机通知
+    def open_notify(self):
+        try:
+            notify.NotifyDialog(self.root, self)
+        except Exception as e:
+            messagebox.showerror("手机通知", str(e), parent=self.root)
+
+    def apply_notify_cfg(self):
+        """开关 / 端口变了就重启监听"""
+        ns = self.notify
+        want = bool(self.km.get("notify_on"))
+        if not want:
+            ns.stop()
+            return
+        if ns.running() and getattr(ns, "_bound", None) != ns.port:
+            ns.stop()
+        if not ns.running():
+            ok, err = ns.start()
+            if not ok:
+                self.status.set("手机通知起不来：%s" % err)
+                self._refresh_status()
+
+    def _notify_buzz(self, info=None):
+        """真来通知了（在服务器线程里调）-> 开一路震动"""
+        ns = self.notify
+
+        def go():
+            rm, own = self._get_rm()
+            if rm is None:
+                ns.q.put(("hit", {"app": "?", "title": "震动通道打不开",
+                                  "why": "打不开", "ts": time.time()}))
+                return
+            prev = getattr(rm, "enabled", True)
+            rm.enabled = True        # 就算「转游戏震动」关着，通知也要震
+            try:
+                alarm.play_ring(rm, ns.ring, ns.strength, ns.seconds)
+            except Exception:
+                pass
+            finally:
+                rm.enabled = prev
+                if own:
+                    try:
+                        rm.close()
+                    except Exception:
+                        pass
+
+        threading.Thread(target=go, daemon=True).start()
+
+    def _get_rm(self):
+        """拿一个能发震动的 Rumble：映射跑着就复用，否则自己开一路"""
+        try:
+            if self.rumble is not None and self.rumble.dev is not None:
+                return self.rumble, False
+        except Exception:
+            pass
+        try:
+            return betop.Rumble(**self._rumble_kw()).open(), True
+        except Exception:
+            return None, False
+
+    def _drain_notify(self):
+        for kind, info in self.notify.poll():
+            try:
+                if kind == "hit":
+                    src = info.get("app") or info.get("from") or "手机"
+                    why = info.get("why", "")
+                    if why == "已震动":
+                        self.status.set("📱 %s 来消息，震了一下" % src)
+                        self._refresh_status()
+                elif kind == "on":
+                    self.status.set("📱 手机通知已开启：%s"
+                                    % (", ".join(info.get("urls", []))))
+                    self._refresh_status()
+            except Exception:
+                pass
 
     def _drain_alarm(self):
         for ev in self.alarm.poll():
@@ -288,7 +377,7 @@ class App:
     # ------------------------------------------------------------ 界面
     def _build(self):
         # ================= 左侧导航 =================
-        sb = tk.Frame(self.root, bg=C_CARD, width=180)
+        sb = tk.Frame(self.root, bg=C_CARD, width=152)
         sb.pack(side="left", fill="y")
         sb.pack_propagate(False)
         tk.Frame(sb, bg=C_LINE, height=0).pack()
@@ -326,6 +415,7 @@ class App:
         nav_item("🔑 键位识别向导", self.open_wizard)
         nav_item("🧪 震动实验室", self.open_lab)
         nav_item("⏰ 震动闹钟", self.open_alarm)
+        nav_item("📱 手机通知", self.open_notify)
         nav_item("📖 使用说明", self.show_help)
         nav_item("💾 保存键位", self.save)
         nav_header("关于")
@@ -352,7 +442,8 @@ class App:
         tk.Label(inner, text="键位映射", font=(FONT, 15, "bold"),
                  fg=C_TEXT, bg=C_CARD).pack(side="left")
         self.chip = tk.Label(inner, text="● " + self.status.get(), font=(FONT, 9),
-                             fg=C_SUB, bg="#f4f5f8", padx=10, pady=4)
+                             fg=C_SUB, bg="#f4f5f8", padx=10, pady=4,
+                             wraplength=380, justify="left")
         self.chip.pack(side="left", padx=14)
         self.btn_run = tk.Button(inner, text="启动映射", font=(FONT, 10, "bold"),
                                  fg="white", bg=C_RED, activebackground=C_RED_DK,
@@ -380,14 +471,45 @@ class App:
                  bg=C_CARD).pack(side="left")
         tk.Label(hdr, text="按下会亮绿 · 点任意键可重新绑定", font=(FONT, 8),
                  fg=C_SUB, bg=C_CARD).pack(side="left", padx=8)
-        self.canvas = tk.Canvas(lc, width=560, height=370, bg=C_CARD,
+        self.canvas = tk.Canvas(lc, width=480, height=370, bg=C_CARD,
                                 highlightthickness=0)
         self.canvas.pack(padx=8, pady=(2, 10))
         self.pad_view = PadView(self.canvas)
         self.pad_view.bind_click(self.rebind)
 
-        rc = tk.Frame(row, bg=C_CARD, highlightthickness=1, highlightbackground=C_LINE)
-        rc.pack(side="left", fill="both", padx=12, ipadx=8)
+        # 右栏内容多（四马达那堆控件），窗口高度装不下 → 做成滚动容器，
+        # 鼠标放右栏上滚轮滚，滚到头不影响别处
+        rc_wrap = tk.Frame(row, bg=C_CARD, highlightthickness=1,
+                           highlightbackground=C_LINE)
+        rc_wrap.pack(side="left", fill="both", padx=(10, 6), ipadx=2)
+        rc_cv = tk.Canvas(rc_wrap, bg=C_CARD, highlightthickness=0)
+        rc_sb = tk.Scrollbar(rc_wrap, orient="vertical", command=rc_cv.yview)
+        rc_cv.configure(yscrollcommand=rc_sb.set)
+        rc_sb.pack(side="right", fill="y")
+        rc_cv.pack(side="left", fill="both", expand=True)
+        rc = tk.Frame(rc_cv, bg=C_CARD)
+        rc_win = rc_cv.create_window((0, 0), window=rc, anchor="nw")
+
+        def _rc_on_cfg(_e):
+            rc_cv.configure(scrollregion=rc_cv.bbox("all"))
+            rc_cv.itemconfigure(rc_win, width=rc_cv.winfo_width() -
+                                rc_sb.winfo_width())
+
+        rc.bind("<Configure>", _rc_on_cfg)
+        rc_cv.bind("<Configure>", _rc_on_cfg)
+
+        def _rc_wheel(e):
+            try:
+                w = self.root.winfo_containing(e.x_root, e.y_root)
+            except Exception:
+                return
+            while w is not None and w is not rc_wrap:
+                w = getattr(w, "master", None)
+            if w is not rc_wrap or rc_cv.yview() == (0.0, 1.0):
+                return
+            rc_cv.yview_scroll(-1 if e.delta > 0 else 1, "units")
+
+        self.root.bind("<MouseWheel>", _rc_wheel)
         tk.Label(rc, text="设备", font=(FONT, 11, "bold"), fg=C_TEXT,
                  bg=C_CARD).pack(anchor="w", padx=14, pady=(10, 4))
         self.dev_lbl = tk.Label(rc, text="北通 BTP-V1T\n先游定制版", font=(FONT, 9),
@@ -467,30 +589,31 @@ class App:
         tk.Button(tb, text="自动识别", font=(FONT, 9), fg=C_TEXT, bg="#f0f1f4",
                   relief="flat", padx=10, pady=4, cursor="hand2",
                   command=self.auto_scan).pack(side="left", padx=6)
-        self.rumble_lbl = tk.Label(tb, text="", font=(FONT, 8), fg=C_SUB,
-                                   bg=C_CARD, wraplength=150, justify="left")
-        self.rumble_lbl.pack(side="left", padx=8)
+        # 状态提示单独一行放着（跟三个按钮同排太宽，右栏会被裁）
+        self.rumble_lbl = tk.Label(rc, text="", font=(FONT, 8), fg=C_SUB,
+                                   bg=C_CARD, wraplength=310, justify="left")
+        self.rumble_lbl.pack(anchor="w", padx=14, pady=(2, 0))
         # ---- 四个马达单独测（左柄/右柄/左扳机/右扳机）----
         mt = tk.Frame(rc, bg=C_CARD)
-        mt.pack(fill="x", padx=14, pady=(0, 2))
+        mt.pack(fill="x", padx=10, pady=(0, 2))
         tk.Label(mt, text="单马达", font=(FONT, 8), fg=C_SUB,
                  bg=C_CARD).pack(side="left")
         self.motor_btns = {}
         for key, name in (("big", "左柄"), ("small", "右柄"),
                           ("tl", "左扳机"), ("tr", "右扳机")):
             b = tk.Button(mt, text=name, font=(FONT, 8), bg="#f0f1f4",
-                          fg=C_TEXT, relief="flat", padx=6, pady=2,
+                          fg=C_TEXT, relief="flat", padx=4, pady=2,
                           cursor="hand2",
                           command=lambda k=key: self.test_motor(k))
-            b.pack(side="left", padx=2)
+            b.pack(side="left", padx=1)
             self.motor_btns[key] = b
         self.btn_scan = tk.Button(mt, text="扫命令", font=(FONT, 8),
                                   fg="#1e7e34", bg="#e6f4ea", relief="flat",
-                                  padx=6, pady=2, cursor="hand2",
+                                  padx=4, pady=2, cursor="hand2",
                                   command=self.open_motor_scan)
-        self.btn_scan.pack(side="left", padx=4)
+        self.btn_scan.pack(side="left", padx=3)
         tk.Button(mt, text="重置", font=(FONT, 8), fg=C_SUB,
-                  bg="#f0f1f4", relief="flat", padx=6, pady=2, cursor="hand2",
+                  bg="#f0f1f4", relief="flat", padx=4, pady=2, cursor="hand2",
                   command=self.reset_rumble).pack(side="left")
         # 合并模式：反正都是震动，四个马达共用一条命令一起震
         self.rm_merge = tk.BooleanVar(
@@ -1273,6 +1396,7 @@ class App:
     def pump(self):
         self._drain_tray()
         self._drain_alarm()
+        self._drain_notify()
         if self.running:
             b = self.state.get("buttons", {})
             a = self.state.get("axes", {})

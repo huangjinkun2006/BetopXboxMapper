@@ -5,8 +5,8 @@
   "deadzone": 0.12,
   "trigger_deadzone": 0.03,
   "rumble": true,
-  "rumble_fmt": 28,
-  "rumble_gain": 3.0,
+  "rumble_fmt": 0,
+  "rumble_gain": 1.0,
   "rumble_custom": null,
   "alarm_on": false,
   "alarm_time": "07:00",
@@ -43,7 +43,7 @@
       "hi": 255,
       "center": 128,
       "fallback_byte": 6,
-      "invert": true
+      "invert": false
     },
     "RX": {
       "up": 1,
@@ -61,7 +61,7 @@
       "hi": 255,
       "center": 128,
       "fallback_byte": 8,
-      "invert": true
+      "invert": false
     },
     "LT": {
       "up": 2,
@@ -87,5 +87,14 @@
     "usage": 57,
     "fallback_byte": 2
   },
+  "notify_port": 19598,
+  "notify_ring": 4,
+  "notify_on": true,
+  "notify_filter": "",
+  "notify_filter_mode": "all",
+  "notify_cooldown": 3.0,
+  "notify_token": "",
+  "notify_strength": 1.0,
+  "notify_secs": 1.2,
   "guide_seen": true
 }

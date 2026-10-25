@@ -1,7 +1,7 @@
 """图形化新手教程（主程序左侧「📖 新手教程」）。
 
 这把手柄不是 XInput，游戏认不到，所以中间要挂一层 ViGEm 虚拟手柄。
-流程对第一次用的人来说不直观，这里按 1→6 步把每一步画出来，
+流程对第一次用的人来说不直观，这里按 1→8 步把每一步画出来，
 能点的按钮直接跳到对应功能，驱动和手柄有没有接好也能当场检测。
 """
 import math
@@ -60,6 +60,14 @@ STEPS = [
         "完全不震：先看界面上那行「游戏震动 → 大马达 xx」，有数字说明游戏发过来了。",
         "还是不行就进「🧪 震动实验室」扫一遍命令，让程序自己找出这把能震的那条。",
     ]),
+    ("⑧ 手机来消息，手柄就震", [
+        "左侧「📱 手机通知」：手机上来了微信、QQ、短信，手柄就震一下，打游戏不用看手机。",
+        "开法：勾「开启」前先点「放行防火墙」（弹 UAC 点「是」），然后记下界面上显示的地址，形如 http://192.168.1.13:9595 。",
+        "先手动验一次：手机连同一个 WiFi，浏览器打开那个地址，点页面上的「震一下」，手柄震就说明通了。",
+        "要自动触发：安卓装 MacroDroid，触发器选「通知收到」，动作选「HTTP 请求」GET，URL 填那个地址加 /notify 。",
+        "苹果不行：iOS 快捷指令没有「收到通知」触发器，只有短信/邮件能自动化，或者就用那个网页按钮手动点。",
+        "连不上按顺序查：防火墙放行 → 手机电脑同一个 WiFi（访客网络不行）→ 别选 127.0.0.1 和虚拟网卡的 IP。",
+    ]),
 ]
 
 
@@ -70,8 +78,8 @@ class Guide(tk.Toplevel):
         self.i = 0
         self.pad = None
         self._anim = None
-        self.title("新手教程 · 七步把北通变成 Xbox 手柄")
-        self.geometry("820x680")
+        self.title("新手教程 · 八步把北通变成 Xbox 手柄")
+        self.geometry("820x740")
         self.configure(bg=C_BG)
         apply_icon(self)
         self.transient(app.root)
@@ -88,7 +96,7 @@ class Guide(tk.Toplevel):
 
         left = tk.Frame(body, bg=C_BG)
         left.pack(side="left", fill="y")
-        self.lst = tk.Listbox(left, font=(FONT, 10), height=8, width=22,
+        self.lst = tk.Listbox(left, font=(FONT, 10), height=9, width=22,
                               relief="flat", bg="white",
                               highlightthickness=1,
                               highlightbackground=C_LINE,
@@ -110,13 +118,28 @@ class Guide(tk.Toplevel):
                             highlightthickness=0)
         self.cv.pack()
 
-        self.title_lbl = tk.Label(right, text="", font=(FONT, 12, "bold"),
+        # 文字区放可滚动容器里，步骤多了超窗也不截断
+        scf = tk.Frame(right, bg=C_BG)
+        scf.pack(fill="both", expand=True)
+        self.scv = tk.Canvas(scf, bg=C_BG, highlightthickness=0)
+        vsb = tk.Scrollbar(scf, orient="vertical", command=self.scv.yview)
+        self.scv.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.scv.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(self.scv, bg=C_BG)
+        self._scw = self.scv.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e:
+                   self.scv.configure(scrollregion=self.scv.bbox("all")))
+        self.scv.bind("<Configure>", lambda e:
+                      self.scv.itemconfigure(self._scw, width=e.width))
+
+        self.title_lbl = tk.Label(inner, text="", font=(FONT, 12, "bold"),
                                   bg=C_BG)
         self.title_lbl.pack(anchor="w", pady=(10, 2))
-        self.text_lbl = tk.Label(right, text="", font=(FONT, 10), fg="#444",
+        self.text_lbl = tk.Label(inner, text="", font=(FONT, 10), fg="#444",
                                  bg=C_BG, justify="left", wraplength=W)
         self.text_lbl.pack(anchor="w")
-        self.res_lbl = tk.Label(right, text="", font=(FONT, 9), fg=C_SUB,
+        self.res_lbl = tk.Label(inner, text="", font=(FONT, 9), fg=C_SUB,
                                 bg=C_BG, justify="left", wraplength=W)
         self.res_lbl.pack(anchor="w", pady=(6, 0))
 
@@ -135,6 +158,7 @@ class Guide(tk.Toplevel):
 
         self.bind("<Left>", lambda e: self.go(-1))
         self.bind("<Right>", lambda e: self.go(1))
+        self.bind("<MouseWheel>", self._on_wheel)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.show()
@@ -161,8 +185,19 @@ class Guide(tk.Toplevel):
         self.act.config(text=["检测驱动装好没", "重新检测手柄",
                               "打开键位向导", "回到主界面",
                               "去主界面改键",
-                              "知道了", "打开震动实验室"][self.i])
+                              "知道了", "打开震动实验室",
+                              "打开手机通知"][self.i])
         self._draw()
+        self.after(30, lambda: self.scv.yview_moveto(0))
+
+    def _on_wheel(self, e):
+        """鼠标滚轮滚动文字区（没得滚时不吃事件）"""
+        try:
+            if self.scv.yview() == (0.0, 1.0):
+                return
+            self.scv.yview_scroll(-1 if e.delta > 0 else 1, "units")
+        except tk.TclError:
+            pass
 
     def _stop_anim(self):
         if self._anim is not None:
@@ -340,6 +375,44 @@ class Guide(tk.Toplevel):
         cv.create_text(280, 336, text="完全不震就去实验室扫命令",
                        font=(FONT, 9), fill=C_SUB)
 
+    def _d7(self):
+        """手机 → 局域网 → 电脑 → 手柄震一下"""
+        cv = self.cv
+        # 手机
+        round_rect(cv, 62, 92, 152, 268, 12, fill="#eef1f5", outline="#cfd4dc")
+        round_rect(cv, 70, 100, 144, 260, 6, fill="white", outline="")
+        round_rect(cv, 76, 118, 138, 172, 8, fill="#e6f1fb", outline=C_BLUE)
+        cv.create_text(84, 128, text="微信", anchor="w", font=(FONT, 9),
+                       fill="#0C447C")
+        cv.create_text(84, 148, text="有新消息", anchor="w", font=(FONT, 9),
+                       fill="#444")
+        cv.create_text(107, 292, text="手机来通知", font=(FONT, 9), fill=C_SUB)
+        # 请求
+        cv.create_line(158, 175, 192, 175, arrow="last", fill=C_SUB, width=1.5)
+        cv.create_text(175, 160, text="/notify", font=(FONT, 9), fill=C_SUB)
+        # 电脑
+        round_rect(cv, 200, 108, 372, 226, 8, fill="#eef1f5", outline="#cfd4dc")
+        round_rect(cv, 208, 116, 364, 208, 4, fill="white", outline="")
+        cv.create_text(286, 146, text="映射器 · 端口 9595", font=(FONT, 10),
+                       fill="#5f6673")
+        cv.create_text(286, 176, text="http://192.168.1.13:9595",
+                       font=(FONT, 9), fill=C_BLUE)
+        cv.create_polygon([266, 226, 306, 226, 316, 246, 256, 246],
+                          fill="#dde3ea", outline="")
+        round_rect(cv, 236, 246, 336, 254, 3, fill="#cfd4dc", outline="")
+        cv.create_text(286, 292, text="电脑收到请求", font=(FONT, 9), fill=C_SUB)
+        # 手柄 + 震动波
+        cv.create_line(378, 175, 412, 175, arrow="last", fill=C_SUB, width=1.5)
+        self._mini_pad(cv, 470, 116, 0.62)
+        for r in (38, 48, 58):
+            for st in (140, -40):
+                cv.create_arc(470 - r, 178 - r, 470 + r, 178 + r,
+                              start=st, extent=80, style="arc",
+                              outline=C_OK, width=2)
+        cv.create_text(470, 292, text="手柄震一下", font=(FONT, 9), fill=C_SUB)
+        cv.create_text(280, 330, text="手机和电脑必须连同一个 WiFi",
+                       font=(FONT, 10, "bold"), fill=C_RED)
+
     @staticmethod
     def _mini_pad(cv, x, y, s):
         """缩略手柄图（流程示意用）"""
@@ -359,7 +432,8 @@ class Guide(tk.Toplevel):
     def on_action(self):
         try:
             [self.check_driver, self.check_pad, self.open_wizard,
-             self.go_main, self.go_main, self.none, self.open_lab][self.i]()
+             self.go_main, self.go_main, self.none, self.open_lab,
+             self.open_notify][self.i]()
         except Exception as e:
             messagebox.showerror("出错了", str(e), parent=self)
 
@@ -379,6 +453,12 @@ class Guide(tk.Toplevel):
     def open_lab(self):
         self.res_lbl.config(text="实验室已打开，点「🏆 最强对决」开始", fg=C_OK)
         self.app.root.after(200, self.app.open_lab)
+
+    def open_notify(self):
+        self.res_lbl.config(
+            text="通知窗口已打开：先点「放行防火墙」（UAC 点是），再勾「开启」",
+            fg=C_OK)
+        self.app.root.after(200, self.app.open_notify)
 
     def check_driver(self):
         self.res_lbl.config(text="正在检测…", fg=C_SUB)

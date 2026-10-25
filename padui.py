@@ -194,6 +194,25 @@ class PadView:
                 cv.create_oval(x0, y0, x0 + 5, y0 + 5, fill=P_LED, outline="")
         self.glow = None
 
+        # 整体平移居中：原稿按 560 宽的画布画（内容占 100..468），
+        # 画布变窄（比如 480）时把图挪到正中间，别偏在一边。
+        # 存了绝对坐标的摇杆帽 / 扳机条也要跟着挪，不然刷新会错位
+        try:
+            cw = int(cv["width"])
+        except Exception:
+            cw = 560
+        dx = max(0, (cw - 368) // 2) - 100
+        if dx:
+            cv.move("all", dx, 0)
+            self.trig = {n: (x1 + dx, x2 + dx, it)
+                         for n, (x1, x2, it) in self.trig.items()}
+            if self.knob_l:
+                self.knob_l = (self.knob_l[0], self.knob_l[1] + dx,
+                               self.knob_l[2])
+            if self.knob_r:
+                self.knob_r = (self.knob_r[0], self.knob_r[1] + dx,
+                               self.knob_r[2])
+
     # -------------------------------------------------- 刷新
     def highlight(self, name):
         self.hl = name
