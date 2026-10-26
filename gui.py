@@ -609,6 +609,10 @@ class App:
         # 尺寸量化到 40px 一档：拖动窗口时不会每个像素都重合成一套贴图
         self._pad_sz = (S(480), S(474))
         self._pad_job = None
+        # 右栏自然宽只测一次存下来：它要在窗口 item 里被强制改宽窄，
+        # 但自然宽（reqwidth）是固定的。每次现算的话，手柄卡宽 → 右栏宽 →
+        # 右栏内容回包 → 手柄卡宽……又是一圈正反馈
+        self._rc_need = 0
 
         def _pad_fit(e=None):
             try:
@@ -617,7 +621,18 @@ class App:
                 return
             if rw < 60 or rh < 60:
                 return
-            avail_w = rw - S(340) - S(16)    # 右栏至少留 340
+            # 给右栏预留它的真实需求：内容自然宽 + 滚动条 + 左右 14px 边距
+            # + rc_wrap 的 padx/ipadx + 一点余量。之前固定留 S(340)，可右栏
+            # 自然就要 480 上下；两边卡片都改成跟自然宽走之后，手柄卡把自己的
+            # 自然宽全要了过去，右栏被挤到 272 还来回晃。
+            if self._rc_need <= 0:
+                try:
+                    need = (rc.winfo_reqwidth() + rc_sb.winfo_width()
+                            + S(28) + S(34))
+                    self._rc_need = max(need, S(340))
+                except Exception:
+                    self._rc_need = S(480)
+            avail_w = rw - self._rc_need - S(16)
             avail_h = rh - S(84)             # 上面标题行 + 内边距 + 余量
             bw = max(S(280), min(avail_w, S(760)))
             bh = max(S(280), min(avail_h, S(900)))
