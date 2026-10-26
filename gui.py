@@ -177,10 +177,18 @@ class App:
         self._refresh_tray()
 
     def show_window(self):
+        """把窗口拉回来（收在托盘/最小化都能恢复），并抢到最前面"""
         try:
-            self.root.deiconify()
+            self._tray_hid = False
+        except Exception:
+            pass
+        try:
+            self.root.deiconify()          # 托盘(withdraw)/最小化都能恢复
             self.root.lift()
+            # 别的窗口占着焦点时 lift 不够，临时置顶一下再取消
+            self.root.attributes("-topmost", True)
             self.root.focus_force()
+            self.root.after(200, lambda: self.root.attributes("-topmost", False))
         except Exception:
             pass
 
@@ -300,6 +308,7 @@ class App:
                 self.tray = None
         except Exception:
             pass
+        _release_instance_lock()      # 干净退出就顺手放锁，下个实例不用等判活
         try:
             self.root.destroy()
         except Exception:
@@ -2093,36 +2102,392 @@ class MotorScan:
                             parent=self.win)
 
 
+# 单实例判重用的锁文件（O_EXCL 原子创建：已存在=另一个实例在跑）。
+# 文件里写首实例的 PID，第二个实例据此判断是"真在跑"还是"崩溃残留"。
+import os as _os
+_LOCK_DIR = _os.path.join(_os.environ.get("LOCALAPPDATA",
+                          _os.environ.get("TEMP", "C:/tmp")), "BetopMapper")
+_LOCK_PATH = _os.path.join(_LOCK_DIR, ".single_lock")
+_INSTANCE_LOCK_FD = None
+
+
+def _lock_owner_alive(path):
+    """读锁文件里的 PID，判断持有者是否还活着。"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            pid = int(f.read().strip())
+    except Exception:
+        return True          # 读不到 PID 就保守认为在跑（走激活分支）
+    try:
+        k = __import__("ctypes").windll.kernel32
+        h = k.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        k.CloseHandle(h)
+        return True
+    except Exception:
+        return True
+
+
+def _kill_same_name_family():
+    """把和自己同名的父/子（PyInstaller 的 bootloader 外壳）结束掉。
+    只杀同名进程，绝不碰 explorer 之类的。"""
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.windll.kernel32
+    me = _os.getpid()
+    mexe = _os.path.basename(sys.executable or "").lower()
+    try:
+        class PE32W(ctypes.Structure):
+            _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                        ("th32ProcessID", wintypes.DWORD),
+                        ("th32DefaultHeapID", ctypes.c_void_p),
+                        ("th32ModuleID", wintypes.DWORD),
+                        ("cntThreads", wintypes.DWORD),
+                        ("th32ParentProcessID", wintypes.DWORD),
+                        ("pcPriClassBase", ctypes.c_long),
+                        ("dwFlags", wintypes.DWORD),
+                        ("szExeFile", wintypes.WCHAR * 260)]
+
+        k.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+        k.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        k.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PE32W)]
+        k.Process32FirstW.restype = wintypes.BOOL
+        k.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PE32W)]
+        k.Process32NextW.restype = wintypes.BOOL
+        k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k.OpenProcess.restype = wintypes.HANDLE
+        k.TerminateProcess.argtypes = [wintypes.HANDLE, ctypes.c_uint]
+        k.TerminateProcess.restype = wintypes.BOOL
+
+        info = {}
+        snap = k.CreateToolhelp32Snapshot(0x00000002, 0)   # TH32CS_SNAPPROCESS
+        if snap and int(snap) != -1:
+            e = PE32W()
+            e.dwSize = ctypes.sizeof(PE32W)
+            ok = k.Process32FirstW(snap, ctypes.byref(e))
+            while ok:
+                info[e.th32ProcessID] = (e.th32ParentProcessID,
+                                         (e.szExeFile or "").lower())
+                ok = k.Process32NextW(snap, ctypes.byref(e))
+            k.CloseHandle(snap)
+
+        targets = []
+        ppid = info.get(me, (0, ""))[0]
+        if ppid and ppid != me and info.get(ppid, (0, ""))[1] == mexe:
+            targets.append(ppid)
+        for pid, (p, nm) in info.items():
+            if p == me and pid != me and nm == mexe:
+                targets.append(pid)
+        for t in targets:
+            h = k.OpenProcess(0x0001, False, t)     # PROCESS_TERMINATE
+            if h:
+                k.TerminateProcess(h, 0)
+                k.CloseHandle(h)
+    except Exception:
+        pass
+
+
+_MEI_GARBAGE = _os.path.join(_LOCK_DIR, ".mei_garbage")
+# 第二实例盖个时间戳，第一实例看到变了就把窗口拉回前台
+_ACT_REQ = _os.path.join(_LOCK_DIR, ".activate")
+
+
+def _queue_mei_cleanup():
+    """第二实例：把自己那份临时目录记进清单，交给还在跑的那个实例删。
+
+    onefile 每次启动都往 %TEMP% 解压一份（本程序约 42MB），正常由 bootloader
+    退出时回收；第二实例的 bootloader 是我们要结束掉的，不会自己收尾，所以把
+    路径记下来让别人代删——自己没法删（文件还被自己占着），派脱机 cmd 在本机
+    实测会被一起清掉，也不靠谱。"""
+    try:
+        d = getattr(sys, "_MEIPASS", None)
+        if not d or not _os.path.isdir(d):
+            return
+        with open(_MEI_GARBAGE, "a", encoding="utf-8") as f:
+            f.write(d + "\n")
+    except Exception:
+        pass
+
+
+def _periodic_mei_sweep(root):
+    """主线程里定时扫一遍临时目录垃圾清单（每 30 秒一次）。
+    不放后台线程里做——Tk 的 after 跨线程调不一定生效。"""
+    try:
+        _sweep_mei_garbage()
+    except Exception:
+        pass
+    try:
+        root.after(30000, lambda: _periodic_mei_sweep(root))
+    except Exception:
+        pass
+
+
+def _sweep_mei_garbage():
+    """第一实例：把清单里的临时目录删掉（它们的主人已经退出了）。"""
+    try:
+        if not _os.path.exists(_MEI_GARBAGE):
+            return
+        import shutil
+        mine = _os.path.normcase(getattr(sys, "_MEIPASS", "") or "")
+        with open(_MEI_GARBAGE, "r", encoding="utf-8") as f:
+            paths = [x.strip() for x in f if x.strip()]
+        left = []
+        for p in paths:
+            if _os.path.normcase(p) == mine:      # 别删自己正在用的
+                continue
+            try:
+                shutil.rmtree(p, ignore_errors=True)
+            except Exception:
+                pass
+            if _os.path.isdir(p):
+                left.append(p)                     # 还被占着，下次再试
+        if left:
+            with open(_MEI_GARBAGE, "w", encoding="utf-8") as f:
+                f.write("\n".join(left) + "\n")
+        else:
+            _os.remove(_MEI_GARBAGE)
+    except Exception:
+        pass
+
+
+def _exit_second_instance():
+    """第二个实例收尾：把外壳一起带走，别留下僵尸进程。
+
+    PyInstaller onefile 的 exe 跑起来是两个进程——真程序在子进程里，父进程只是
+    bootloader 外壳。子进程用 os._exit() 硬退的话外壳**不会**跟着走，会永远
+    留在进程列表里（看着就像又开了一个实例，还白占一份 42MB 的临时目录）。
+    这里先把同名的外壳进程结束掉，把自己那份临时目录记进清单让第一个实例代删，
+    再优雅退出；万一优雅退出被卡住，6 秒后看门狗强杀自己兜底。"""
+    try:
+        _kill_same_name_family()
+    except Exception:
+        pass
+    try:
+        _queue_mei_cleanup()
+    except Exception:
+        pass
+    try:
+        import ctypes as _c
+        import threading as _t
+
+        def _watchdog():
+            try:
+                time.sleep(6.0)
+                _c.windll.kernel32.TerminateProcess(
+                    _c.windll.kernel32.GetCurrentProcess(), 0)
+            except Exception:
+                pass
+        _t.Thread(target=_watchdog, daemon=True).start()
+    except Exception:
+        pass
+    sys.exit(0)
+
+
+def _activate_existing(evname):
+    """已有实例在跑：用命名事件把它拉回前台（不行再按标题兜底），
+    然后自己强制退出，绝不新开窗口/托盘。"""
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.windll.kernel32
+    u = ctypes.windll.user32
+    k.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    k.OpenEventW.restype = wintypes.HANDLE
+    k.SetEvent.argtypes = [wintypes.HANDLE]
+    k.SetEvent.restype = wintypes.BOOL
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    k.CloseHandle.restype = wintypes.BOOL
+    u.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    u.FindWindowW.restype = wintypes.HWND
+    u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    u.ShowWindow.restype = wintypes.BOOL
+    u.SetForegroundWindow.argtypes = [wintypes.HWND]
+    u.SetForegroundWindow.restype = wintypes.BOOL
+    # 先把"把我拉回前台"的请求落盘——越早越好，后面哪怕中途被打断也生效
+    try:
+        with open(_ACT_REQ, "w", encoding="utf-8") as f:
+            f.write("%.6f" % time.time())
+    except Exception:
+        pass
+    # 首个实例可能还没建好激活事件：重试一小段，再按标题兜底翻窗
+    for _ in range(15):   # 约 1.5s
+        eh = k.OpenEventW(0x1F0000, False, evname)   # EVENT_ALL_ACCESS
+        if eh:
+            k.SetEvent(eh)
+            k.CloseHandle(eh)
+            _exit_second_instance()
+        time.sleep(0.1)
+    # 事件没接住（旧版本实例在跑）：直接按标题把窗口翻前台
+    hwnd = u.FindWindowW(None, "北通游戏厅 · 手柄映射器")
+    if hwnd:
+        u.ShowWindow(hwnd, 9)              # SW_RESTORE
+        u.SetForegroundWindow(hwnd)
+    _exit_second_instance()
+
+
 def _single_instance():
     """单实例：已经在跑就把旧窗口翻到前台，自己退掉。
     免得用户每次双击都新开一个进程——多个实例同时读手柄、同时建虚拟
-    Xbox 手柄，游戏里会出现双重输入。互斥名带版本号，旧版不挡新版。
-    任何一步出错都放行（宁可多开一个，也不能打不开）。"""
+    Xbox 手柄，游戏里会出现双重输入。
+    判重用「锁文件 O_EXCL 原子创建」：谁先创建谁就是首实例，第二个实例
+    创建必失败（不依赖启动快慢、也不读 ctypes last-error，冻结 exe 里
+    GetLastError 会误报，导致每次点桌面都多开一个）。文件里记 PID，崩溃
+    残留的死锁会被新实例识别并清掉。任何一步异常都放行（宁可多开一个，
+    也不能打不开）。"""
     try:
-        import ctypes
-        name = "BetopXboxMapper_Single_%s" % updater.APP_VERSION
-        h = ctypes.windll.kernel32.CreateMutexW(None, False, name)
-        if not h:
-            return
-        if ctypes.windll.kernel32.GetLastError() != 183:   # ERROR_ALREADY_EXISTS
-            return
-        hwnd = ctypes.windll.user32.FindWindowW(None,
-                                               "北通游戏厅 · 手柄映射器")
-        if not hwnd:
-            # 窗口可能刚在销毁/最小化中，再找一次；还找不到就放行——
-            # 免得留下一个只占互斥没有界面的僵尸进程，用户再也打不开
-            time.sleep(1.0)
-            hwnd = ctypes.windll.user32.FindWindowW(
-                None, "北通游戏厅 · 手柄映射器")
-        if hwnd:
-            ctypes.windll.user32.ShowWindow(hwnd, 9)       # SW_RESTORE
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-            sys.exit(0)
-        # 找不到窗口：放行，让新的起来（旧的残留自生自灭）
+        evname = "BetopXboxMapper_Activate_%s" % updater.APP_VERSION
+        try:
+            _os.makedirs(_LOCK_DIR, exist_ok=True)
+        except Exception:
+            pass
+        try:
+            fd = _os.open(_LOCK_PATH,
+                          _os.O_CREAT | _os.O_EXCL | _os.O_RDWR)
+        except FileExistsError:
+            # 锁已存在：看持有者是否真在跑
+            if _lock_owner_alive(_LOCK_PATH):
+                _activate_existing(evname)   # 内部直接结束本进程
+            # 崩溃残留：清掉重抢
+            try:
+                _os.remove(_LOCK_PATH)
+            except Exception:
+                pass
+            try:
+                fd = _os.open(_LOCK_PATH,
+                              _os.O_CREAT | _os.O_EXCL | _os.O_RDWR)
+            except FileExistsError:
+                return          # 极端情况抢不到，放行（不卡死）
+        # 我是首实例：写 PID 并持有 fd（进程退出自动关，文件靠 PID 判活）
+        try:
+            _os.write(fd, str(_os.getpid()).encode("utf-8"))
+        except Exception:
+            pass
+        global _INSTANCE_LOCK_FD
+        _INSTANCE_LOCK_FD = fd
+        return
     except SystemExit:
         raise
     except Exception:
         return
+
+
+def _release_instance_lock():
+    """正常退出时删掉锁文件，下次启动直接拿到（不用靠 PID 判活）。"""
+    global _INSTANCE_LOCK_FD
+    try:
+        if _INSTANCE_LOCK_FD is not None:
+            try:
+                _os.close(_INSTANCE_LOCK_FD)
+            except Exception:
+                pass
+            _INSTANCE_LOCK_FD = None
+    except Exception:
+        pass
+    try:
+        _os.remove(_LOCK_PATH)
+    except Exception:
+        pass
+
+
+def _install_activate(app):
+    """首个实例建一个命名事件 + 后台线程等待；收到 SetEvent 就把自己的
+    窗口拉到前台（deiconify+lift+focus，托盘态也能拉回）。"""
+    try:
+        import ctypes
+        import threading
+        from ctypes import wintypes
+        k = ctypes.windll.kernel32
+        evname = "BetopXboxMapper_Activate_%s" % updater.APP_VERSION
+        k.CreateEventW.argtypes = [wintypes.LPVOID, wintypes.BOOL,
+                                   wintypes.BOOL, wintypes.LPCWSTR]
+        k.CreateEventW.restype = wintypes.HANDLE
+        k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k.WaitForSingleObject.restype = wintypes.DWORD
+        eh = k.CreateEventW(None, False, False, evname)   # 自动复位
+        if not eh:
+            return
+
+        k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k.WaitForSingleObject.restype = wintypes.DWORD
+
+        # 拉窗口这件事**绝对不能**走 root.after：
+        # ① 跨线程调 Tk 不安全；② 就算在主线程里轮询，实测 Tk 的定时器跑两轮
+        # 就停摆（本程序界面重、定时器被挤掉）。所以这里用后台线程 + 纯 Win32
+        # 调用（ShowWindow/SetForegroundWindow），完全不碰 Tk，稳。
+        u = ctypes.windll.user32
+        u.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+        u.GetAncestor.restype = wintypes.HWND
+        u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.ShowWindow.restype = wintypes.BOOL
+        u.SetForegroundWindow.argtypes = [wintypes.HWND]
+        u.SetForegroundWindow.restype = wintypes.BOOL
+        try:
+            hwnd = u.GetAncestor(wintypes.HWND(int(app.root.winfo_id())), 2)
+        except Exception:
+            hwnd = None
+
+        def _bring_up(tag):
+            try:
+                if hwnd:
+                    u.ShowWindow(hwnd, 9)          # SW_RESTORE（托盘态也拉回）
+                    u.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+            try:
+                app.show_window()                  # 顺手让 Tk 状态也同步
+            except Exception:
+                pass
+            try:
+                _sweep_mei_garbage()               # 帮第二个实例收临时目录
+            except Exception:
+                pass
+
+        _seen = [0.0]
+        try:
+            if _os.path.exists(_ACT_REQ):
+                _seen[0] = _os.path.getmtime(_ACT_REQ)
+        except Exception:
+            pass
+
+        _tick = [0]
+
+        def _waiter():
+            while True:
+                try:
+                    if k.WaitForSingleObject(eh, 200) == 0:
+                        _bring_up("event")
+                    try:
+                        mt = _os.path.getmtime(_ACT_REQ)
+                        if mt > _seen[0] + 0.001:
+                            _seen[0] = mt
+                            _bring_up("file")
+                    except Exception:
+                        pass
+                    # 每 20 秒扫一次临时目录垃圾（纯文件操作，放线程里最稳，
+                    # 交给 Tk 定时器实测会被挤掉）
+                    _tick[0] += 1
+                    if _tick[0] % 100 == 0:
+                        try:
+                            _sweep_mei_garbage()
+                        except Exception:
+                            pass
+                except Exception:
+                    try:
+                        time.sleep(0.2)
+                    except Exception:
+                        return
+
+        t = threading.Thread(target=_waiter, daemon=True)
+        t.start()
+        app._activate_event = eh
+        # 顺手把上次崩溃/被强杀留下的临时目录清掉
+        try:
+            app.root.after(3000, _sweep_mei_garbage)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 
 
 def main():
@@ -2142,6 +2507,11 @@ def main():
     _single_instance()
     root = tk.Tk()
     app = App(root)
+    _install_activate(app)          # 单实例激活：第二个实例靠它把本窗口拉回前台
+    try:
+        root.after(5000, lambda: _periodic_mei_sweep(root))
+    except Exception:
+        pass
 
     # App.__init__ 里已经挂过了；这里再挂一次防止被覆盖。
     # 关窗口 = 藏到托盘（没托盘就直接退），真退走 app.quit_app()：
