@@ -618,6 +618,14 @@ class App:
                 bh = int(bw * 474 / 480)
             bw = max(S(200), bw // S(40) * S(40))
             bh = int(bw * 474 / 480)
+            # win11ui.Card 启动布局时会把内容宽度钉死在当时的卡片宽度上，
+            # 之后画布调多大卡片都不跟（最大化手柄图被锁小的根因）。
+            # 这里把窗口项宽度归零=恢复跟随内容，卡片就会按新画布尺寸重新长。
+            # 放在尺寸判等之前：就算尺寸没变也要解一次钉
+            try:
+                lc.cv.itemconfigure(lc._win, width=0)
+            except Exception:
+                pass
             if (bw, bh) == self._pad_sz:
                 return
             self._pad_sz = (bw, bh)

@@ -89,8 +89,15 @@ class Card(tk.Frame):
         cv = self.cv
         ww, hh = cv.winfo_width(), cv.winfo_height()
         if ww > 2 * self.pad + 4:
-            # 卡片被外层拉宽时，让内容跟着铺满（fill="x" 的行才不会缩在左边）
-            cv.itemconfigure(self._win, width=ww - 2 * self.pad)
+            # 卡片实际宽 vs 内容自然宽：不一致 = 被外层拉宽/压窄，让 body 铺满；
+            # 一致 = 自然贴合，窗口项宽度归零（跟随内容）。
+            # 之前无条件钉宽，启动布局时被挤小一次就永远锁死在旧尺寸，
+            # 手柄图最大化不跟长的根因（v1.0.33 修复）
+            want = self.body.winfo_reqwidth() + 2 * self.pad
+            if abs(ww - want) > 1:
+                cv.itemconfigure(self._win, width=max(1, ww - 2 * self.pad))
+            else:
+                cv.itemconfigure(self._win, width=0)
         cv.delete("cardbg")
         ww, hh = cv.winfo_width(), cv.winfo_height()
         if ww < 4 or hh < 4:
