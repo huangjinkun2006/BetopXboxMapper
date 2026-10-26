@@ -78,8 +78,14 @@ class Card(tk.Frame):
     def _on_body(self, e):
         # 宽高分开判断：绑在一起时宽度收敛后高度变化会被跳过，
         # 卡片就会比内容矮，把手柄图裁掉一截
-        w = max(self._min_w or 0, e.width) + 2 * self.pad
-        h = e.height + 2 * self.pad
+        #
+        # 注意：这里必须用 body 的**自然宽度**（winfo_reqwidth），不能用
+        # e.width（实际宽度）——实际宽度会被 _on_cv 的 itemconfigure 强制改，
+        # 拿它回写画布宽度就是「画布→body→画布」的正反馈，卡片宽度永远
+        # 收敛不了，右栏被挤得一直晃（v1.0.34 实测：body 自然宽 536 不变，
+        # 实际宽却在 416↔372 之间震荡）。
+        w = max(self._min_w or 0, self.body.winfo_reqwidth()) + 2 * self.pad
+        h = self.body.winfo_reqheight() + 2 * self.pad
         if abs(self.cv.winfo_reqwidth() - w) > 1:
             self.cv.configure(width=w)
         if abs(self.cv.winfo_reqheight() - h) > 1:
