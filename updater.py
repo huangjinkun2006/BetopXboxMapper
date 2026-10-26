@@ -27,7 +27,7 @@ except Exception:
     def S(px):
         return px
 
-APP_VERSION = "1.0.34"
+APP_VERSION = "1.0.35"
 REPO = "huangjinkun2006/BetopXboxMapper"
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO
 API_RELEASES = "https://api.github.com/repos/%s/releases?per_page=20" % REPO
