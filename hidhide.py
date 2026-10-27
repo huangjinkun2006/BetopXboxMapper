@@ -62,8 +62,15 @@ def instance_path(interface_path):
     return p
 
 
-def _run(args, timeout=20):
+# CLI 单次调用超时。驱动被卡死时（官方 CLI 自己都要 40s+ 才应答），调用方
+# 可以把这个值调小（比如 3 秒）快速失败，界面才不至于跟着一起挂。
+DEFAULT_TIMEOUT = 20.0
+
+
+def _run(args, timeout=None):
     """跑 CLI，返回 (stdout, stderr)。退出码不可信，看 stderr 有没有报错"""
+    if timeout is None:
+        timeout = DEFAULT_TIMEOUT
     exe = cli_path()
     if not exe:
         return "", "__err__找不到 HidHideCLI.exe"
