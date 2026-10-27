@@ -468,7 +468,7 @@ class App:
     # ------------------------------------------------------------ 界面
     def _build(self):
         # ================= 左侧导航 =================
-        sb = tk.Frame(self.root, bg=C_CARD, width=S(152))
+        sb = tk.Frame(self.root, bg=C_CARD, width=S(170))
         sb.pack(side="left", fill="y")
         sb.pack_propagate(False)
         tk.Frame(sb, bg=C_LINE, height=0).pack()
@@ -496,6 +496,10 @@ class App:
             f.pack(fill="x", padx=S(12), pady=S(1))
             if cmd:
                 f.bind("<Button-1>", lambda e: cmd())
+            if not active:
+                # 悬停高亮：非选中项划过时垫一层浅灰（v1.0.36）
+                f.bind("<Enter>", lambda e: f.config(bg="#f0f1f4"))
+                f.bind("<Leave>", lambda e: f.config(bg=C_CARD))
             return f
 
         nav_header("我的手柄")
@@ -503,8 +507,8 @@ class App:
         nav_item("🖥 设备检测", self.show_device)
         nav_header("工具箱")
         nav_item("🕹 键位映射", None, active=True)
-        nav_item("🛡 设备屏蔽（HidHide）", self.open_hidhide)
-        nav_item("🔑 键位识别向导", self.open_wizard)
+        nav_item("🛡 设备屏蔽", self.open_hidhide)
+        nav_item("🔑 键位向导", self.open_wizard)
         nav_item("🧪 震动实验室", self.open_lab)
         nav_item("⏰ 震动闹钟", self.open_alarm)
         nav_item("📱 手机通知", self.open_notify)
@@ -521,7 +525,7 @@ class App:
         self.ui_scale_lbl.pack(fill="x", padx=S(20))
         self.ui_scale = tk.IntVar(value=_cur_pct)
         sc = tk.Scale(sb, from_=80, to=200, orient="horizontal",
-                      variable=self.ui_scale, resolution=5,
+                      variable=self.ui_scale, resolution=5, showvalue=False,
                       font=FT(8), fg=C_SUB, bg=C_CARD, troughcolor="#e3e5ea",
                       highlightthickness=0, sliderrelief="flat",
                       length=S(110), command=self._on_ui_scale_drag)
@@ -561,7 +565,7 @@ class App:
                  fg=C_TEXT, bg=C_CARD).pack(side="left")
         self.chip = tk.Label(inner, text="● " + self.status.get(), font=FT(9),
                              fg=C_SUB, bg="#f4f5f8", padx=S(10), pady=S(4),
-                             wraplength=S(430), justify="left")
+                             wraplength=S(300), justify="left")
         self.chip.pack(side="left", padx=S(14))
         # 手柄电量（插上手柄后自动检测，有线读不到就显示 USB 供电）
         self.lbl_batt = tk.Label(inner, text="🔋 …", font=FT(9),
@@ -886,6 +890,7 @@ class App:
         bars = tk.Frame(bc.body, bg=C_CARD)
         bars.pack(fill="x", padx=S(16), pady=(S(0), S(12)))
         self.bars = {}
+        self.bar_vals = {}
         for i, k in enumerate(betop.AXIS_TARGETS):
             col = tk.Frame(bars, bg=C_CARD)
             col.grid(row=0, column=i, padx=S(6))
@@ -894,6 +899,11 @@ class App:
             cv = tk.Canvas(col, width=S(104), height=S(12), bg="#f4f5f8", highlightthickness=0)
             cv.pack(pady=S(2))
             self.bars[k] = cv
+            # 实时数值：一眼看出当前轴读数（v1.0.36）
+            vl = tk.Label(col, text="+0.00", font=FT(7, family="Consolas"),
+                          fg="#a0a4ad", bg=C_CARD)
+            vl.pack()
+            self.bar_vals[k] = vl
             fz = tk.Label(col, text="反向", font=FT(8), fg=C_RED, bg=C_CARD,
                           cursor="hand2")
             fz.pack()
@@ -1605,7 +1615,11 @@ class App:
             a = self.state.get("axes", {})
             self.pad_view.set_state(b, a)
             for k, bar in self.bars.items():
-                self.draw_bar(bar, a.get(k, 0.0), k)
+                v = a.get(k, 0.0)
+                self.draw_bar(bar, v, k)
+                vl = self.bar_vals.get(k)
+                if vl is not None:
+                    vl.config(text="%+.2f" % v)
         # 震动联动：有马达在转就让图上的手柄跟着抖
         try:
             self.pad_view.set_shake(betop.Rumble.max_level())
@@ -1647,6 +1661,15 @@ class App:
         cv.delete("all")
         w = int(cv["width"]); h = int(cv["height"])
         mid = w // 2
+        # 死区带 + 零点刻度：不推杆也能看出这是双向条、哪里是死区（v1.0.36）
+        try:
+            dz_n = int(max(0.0, min(0.5, self.dz.get())) * (mid - 2))
+        except Exception:
+            dz_n = 0
+        if dz_n > 0:
+            cv.create_rectangle(mid - dz_n, 1, mid + dz_n, h - 1,
+                                fill="#e9ebef", outline="")
+        cv.create_line(mid, 1, mid, h - 1, fill="#c9cdd4")
         n = int(abs(v) * (mid - 2))
         color = C_RED if v < 0 else "#3a7bff"
         if v >= 0:
